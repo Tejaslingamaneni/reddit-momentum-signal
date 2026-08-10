@@ -1,0 +1,19 @@
+# Environment — never commit secrets
+.env
+
+# Data — raw data and database stay local
+data/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+
+# OS
+.DS_Store
