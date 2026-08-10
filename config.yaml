@@ -32,7 +32,7 @@ tickers:
 # ── Scoring (Milestone 3) ──────────────────────────────────────────────────────
 scoring:
   scorer_version: "v0.1"
-  model: "gemini-flash-latest"
+  model: "llama3.2:3b"
   max_comment_tokens: 1500
   batch_size: 20
   min_upvotes: 10

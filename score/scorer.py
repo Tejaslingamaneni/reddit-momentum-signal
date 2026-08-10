@@ -16,10 +16,9 @@ from typing import Any
 import time
 
 import duckdb
+import httpx
 import structlog
 import yaml
-from google import genai
-from google.genai import types
 from tenacity import retry, stop_after_attempt, wait_exponential
 
 log = structlog.get_logger()
@@ -128,31 +127,40 @@ def _error_row(comment_id: str, ticker: str, scorer_version: str) -> dict[str, A
 
 # ── Core API call ──────────────────────────────────────────────────────────────
 
-def _call_api(client: genai.Client, model_name: str, ticker: str, body: str) -> dict[str, Any]:
+OLLAMA_URL = "http://localhost:11434/api/chat"
+
+
+def _call_api(model_name: str, ticker: str, body: str) -> dict[str, Any]:
     prompt = f"{SYSTEM_PROMPT}\n\n{USER_PROMPT_TEMPLATE.format(ticker=ticker, body=body)}"
-    response = client.models.generate_content(
-        model=model_name,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            tools=[types.Tool(function_declarations=[SCORE_FUNCTION])],
-            tool_config=types.ToolConfig(
-                function_calling_config=types.FunctionCallingConfig(
-                    mode="ANY",
-                    allowed_function_names=["score_comment"],
-                )
-            ),
-        ),
-    )
-    for part in response.candidates[0].content.parts:
-        if part.function_call and part.function_call.name == "score_comment":
-            return dict(part.function_call.args)
-    raise ValueError("No function_call in Gemini response")
+    payload = {
+        "model": model_name,
+        "messages": [{"role": "user", "content": prompt}],
+        "tools": [{"type": "function", "function": SCORE_FUNCTION}],
+        "stream": False,
+    }
+    resp = httpx.post(OLLAMA_URL, json=payload, timeout=120)
+    resp.raise_for_status()
+    data = resp.json()
+
+    # Extract tool call result
+    msg = data.get("message", {})
+    tool_calls = msg.get("tool_calls", [])
+    if tool_calls:
+        return tool_calls[0]["function"]["arguments"]
+
+    # Fallback: parse JSON from content if model didn't use tool call
+    import json, re
+    content = msg.get("content", "")
+    match = re.search(r"\{.*\}", content, re.DOTALL)
+    if match:
+        return json.loads(match.group())
+
+    raise ValueError(f"No tool call or JSON in Ollama response: {content[:200]}")
 
 
 # ── Public scorer ──────────────────────────────────────────────────────────────
 
 def score_one(
-    client: genai.Client,
     model_name: str,
     comment_id: str,
     ticker: str,
@@ -161,12 +169,12 @@ def score_one(
 ) -> dict[str, Any]:
 
     @retry(
-        wait=wait_exponential(multiplier=2, min=15, max=120),
-        stop=stop_after_attempt(5),
+        wait=wait_exponential(multiplier=1, min=2, max=30),
+        stop=stop_after_attempt(3),
         reraise=True,
     )
     def _with_retry() -> dict[str, Any]:
-        return _call_api(client, model_name, ticker, body)
+        return _call_api(model_name, ticker, body)
 
     try:
         raw = _with_retry()
@@ -184,9 +192,16 @@ def score_one(
     q_composite = sum(q_scores) / len(q_scores)
     reasoning_tier = int(raw.get("reasoning_tier", 0))
 
-    catalyst_date = raw.get("catalyst_date") or None
+    # Validate catalyst_date — local models sometimes return durations or freetext
+    _cd = raw.get("catalyst_date") or None
+    import re as _re
+    catalyst_date: str | None = _cd if (_cd and _re.match(r"^\d{4}-\d{2}-\d{2}$", str(_cd))) else None
+
     horizon_days_raw = raw.get("horizon_days")
-    horizon_days = int(horizon_days_raw) if horizon_days_raw else None
+    try:
+        horizon_days: int | None = int(horizon_days_raw) if horizon_days_raw is not None else None
+    except (ValueError, TypeError):
+        horizon_days = None
 
     return {
         "comment_id": comment_id,
@@ -251,7 +266,7 @@ def run_score(limit: int | None = None) -> dict[str, Any]:
 
     log.info("scorer.start", model=model_name, limit=effective_limit, scorer_version=scorer_version)
 
-    client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
+    # Ollama runs locally — no API key needed
 
     con = duckdb.connect(resolved_db)
     schema_ddl = (project_root / "db" / "schema.sql").read_text()
@@ -302,14 +317,14 @@ def run_score(limit: int | None = None) -> dict[str, Any]:
 
         # Score once using the first ticker as context
         primary_ticker = tickers[0] if tickers else "UNKNOWN"
-        base_row = score_one(client, model_name, comment_id, primary_ticker, body, scorer_version)
+        base_row = score_one(model_name, comment_id, primary_ticker, body, scorer_version)
 
         # Fan out: insert a score row for every ticker on this comment
         for ticker in tickers:
             row = {**base_row, "ticker": ticker}
             _insert_score(con, row)
 
-        time.sleep(13)  # free tier: 5 RPM max
+        # No rate limiting needed — Ollama runs locally
 
         if base_row["parse_error"]:
             errors += 1
