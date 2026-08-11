@@ -15,6 +15,9 @@ extract:
 score:
 	python scripts/score.py
 
+credibility:
+	python scripts/credibility.py
+
 signal:
 	python scripts/signals.py
 

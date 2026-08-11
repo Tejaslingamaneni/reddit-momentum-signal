@@ -46,6 +46,8 @@ def run_signal() -> dict[str, Any]:
     log.info("signal.start", window_days=window_days, min_total_mass=min_total_mass)
 
     # ── Step 1: per-(ticker, day) aggregation ─────────────────────────────────
+    # Each comment's mass is multiplied by the author's credibility weight.
+    # Authors not yet in author_credibility default to weight=1.0.
     daily_raw = con.execute(
         """
         SELECT
@@ -54,16 +56,25 @@ def run_signal() -> dict[str, Any]:
             SUM(CASE WHEN cs.stance = 'bullish' AND NOT cs.is_naive
                 THEN CASE cs.reasoning_tier
                     WHEN 1 THEN 0.5 WHEN 2 THEN 1.0 WHEN 3 THEN 2.0 ELSE 0.0
-                END * cs.q_composite ELSE 0.0 END) AS bull_mass,
+                END * cs.q_composite
+                  * COALESCE(ac.w_credibility, 1.0)
+                ELSE 0.0 END) AS bull_mass,
             SUM(CASE WHEN cs.stance = 'bearish' AND NOT cs.is_naive
                 THEN CASE cs.reasoning_tier
                     WHEN 1 THEN 0.5 WHEN 2 THEN 1.0 WHEN 3 THEN 2.0 ELSE 0.0
-                END * cs.q_composite ELSE 0.0 END) AS bear_mass,
+                END * cs.q_composite
+                  * COALESCE(ac.w_credibility, 1.0)
+                ELSE 0.0 END) AS bear_mass,
             COUNT(*)                                    AS n_total,
             SUM(CASE WHEN cs.is_naive     THEN 1 ELSE 0 END) AS n_naive,
             SUM(CASE WHEN NOT cs.is_naive THEN 1 ELSE 0 END) AS n_scored
         FROM comment_scores cs
         JOIN comments c ON c.comment_id = cs.comment_id
+        LEFT JOIN (
+            SELECT author, w_credibility
+            FROM author_credibility
+            WHERE as_of_date = (SELECT MAX(as_of_date) FROM author_credibility)
+        ) ac ON ac.author = c.author
         WHERE cs.parse_error = FALSE
           AND cs.scorer_version = ?
         GROUP BY cs.ticker, DATE_TRUNC('day', c.created_utc)

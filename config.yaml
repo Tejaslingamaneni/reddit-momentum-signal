@@ -11,7 +11,7 @@ reddit:
   # comment depth: 0 = top-level only, -1 = full tree
   comment_depth: -1
   # lookback window when bootstrapping via Arctic Shift (days)
-  history_days: 30
+  history_days: 90
   # source: 'praw' (ongoing) | 'arctic_shift' (historical bootstrap) | 'both'
   ingest_source: arctic_shift
 
