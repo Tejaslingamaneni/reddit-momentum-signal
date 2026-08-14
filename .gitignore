@@ -1,8 +1,10 @@
 # Environment — never commit secrets
 .env
 
-# Data — raw data and database stay local
-data/
+# Data — raw data and database stay local (except static exports for deployment)
+data/*
+!data/leaderboard_cache.json
+!data/analyst_profiles.json
 
 # Python
 __pycache__/

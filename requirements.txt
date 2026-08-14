@@ -1,0 +1,7 @@
+flask>=3.0
+gunicorn>=21.0
+duckdb>=0.10
+pandas>=2.2
+numpy>=1.26
+pyyaml>=6.0
+structlog>=24.1

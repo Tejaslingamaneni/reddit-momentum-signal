@@ -1,0 +1,1691 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>THE MARKET GAMES</title>
+  <style>
+    :root {
+      --pink:    #e8005a;
+      --pink2:   #ff2277;
+      --glow:    rgba(232,0,90,.45);
+      --gold:    #ffd700;
+      --silver:  #c0c0c0;
+      --bronze:  #cd7f32;
+      --bg:      #06000d;
+      --surface: rgba(232,0,90,.04);
+      --border:  rgba(232,0,90,.18);
+      --text:    #ffffff;
+      --dim:     #886688;
+    }
+
+    *{margin:0;padding:0;box-sizing:border-box;}
+
+    body{
+      background:var(--bg);
+      color:var(--text);
+      font-family:'SF Mono','Fira Code','Consolas',monospace;
+      min-height:100vh;
+      overflow-x:hidden;
+    }
+
+    /* ── Background layers ── */
+    #bg-canvas{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none;}
+
+    .grid{
+      position:fixed;inset:0;z-index:0;pointer-events:none;
+      background-image:
+        linear-gradient(rgba(232,0,90,.05) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(232,0,90,.05) 1px,transparent 1px);
+      background-size:55px 55px;
+    }
+
+    .vignette{
+      position:fixed;inset:0;z-index:0;pointer-events:none;
+      background:radial-gradient(ellipse at center,transparent 35%,#06000d 100%);
+    }
+
+    /* Floating Squid Game shapes */
+    #particles{position:fixed;inset:0;z-index:0;pointer-events:none;overflow:hidden;}
+    .pt{
+      position:absolute;
+      animation:floatUp linear infinite;
+      opacity:0;
+      color:var(--pink);
+      user-select:none;
+      font-size:1.4rem;
+    }
+    @keyframes floatUp{
+      0%  {transform:translateY(105vh) rotate(0deg);opacity:0;}
+      8%  {opacity:.35;}
+      92% {opacity:.1;}
+      100%{transform:translateY(-10vh) rotate(180deg);opacity:0;}
+    }
+
+    /* ── Page ── */
+    .page{
+      position:relative;z-index:1;
+      max-width:1300px;
+      margin:0 auto;
+      padding:0 2rem 5rem;
+    }
+
+    /* ── Header ── */
+    header{text-align:center;padding:3.5rem 0 2rem;}
+
+    .crown-row{
+      display:flex;align-items:center;justify-content:center;
+      gap:1.2rem;margin-bottom:.6rem;
+    }
+    .crown{font-size:2rem;}
+
+    header h1{
+      font-size:clamp(1.8rem,5vw,3.4rem);
+      font-weight:900;
+      letter-spacing:.2em;
+      text-transform:uppercase;
+      background:linear-gradient(120deg,#fff 20%,var(--pink2) 60%,var(--pink) 100%);
+      -webkit-background-clip:text;
+      -webkit-text-fill-color:transparent;
+      background-clip:text;
+      text-shadow:none;
+    }
+
+    .subtitle{
+      margin-top:.6rem;
+      font-size:.72rem;
+      color:var(--dim);
+      letter-spacing:.25em;
+      text-transform:uppercase;
+    }
+
+    .tagline{
+      margin-top:.5rem;
+      font-size:.95rem;
+      color:rgba(255,255,255,.55);
+      font-style:italic;
+      letter-spacing:.04em;
+    }
+
+    .live-badge{
+      display:inline-flex;align-items:center;gap:8px;
+      margin-top:1rem;
+      font-size:.68rem;letter-spacing:.2em;
+      color:var(--pink2);
+      text-transform:uppercase;
+    }
+    .live-dot{
+      width:8px;height:8px;border-radius:50%;
+      background:var(--pink2);
+      animation:pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse{
+      0%,100%{box-shadow:0 0 0 0 rgba(255,34,119,.55);}
+      50%     {box-shadow:0 0 0 7px rgba(255,34,119,0);}
+    }
+
+    /* ── Shapes row (decorative) ── */
+    .shapes-row{
+      display:flex;justify-content:center;gap:2rem;
+      margin:1rem 0 0;font-size:1.3rem;color:var(--pink);
+      opacity:.5;letter-spacing:.5rem;
+    }
+
+    /* ── Stats bar ── */
+    .stats-bar{
+      display:flex;justify-content:center;flex-wrap:wrap;
+      gap:0 3rem;
+      margin:1.8rem 0 2rem;
+      padding:1.3rem 2rem;
+      border:1px solid var(--border);
+      border-radius:10px;
+      background:var(--surface);
+      backdrop-filter:blur(8px);
+    }
+    .stat{text-align:center;padding:.4rem 0;}
+    .stat-val{
+      font-size:1.55rem;font-weight:800;
+      color:var(--pink2);
+      text-shadow:0 0 20px var(--glow);
+    }
+    .stat-lbl{font-size:.63rem;color:var(--dim);letter-spacing:.12em;margin-top:2px;text-transform:uppercase;}
+
+    /* ── Table ── */
+    .table-wrap{
+      width:100%;overflow-x:auto;
+      border:1px solid var(--border);
+      border-radius:10px;
+      background:var(--surface);
+      backdrop-filter:blur(8px);
+    }
+
+    table{width:100%;border-collapse:collapse;min-width:720px;}
+
+    thead th{
+      padding:.9rem 1.1rem;
+      text-align:left;
+      font-size:.62rem;font-weight:600;
+      letter-spacing:.18em;text-transform:uppercase;
+      color:var(--dim);
+      border-bottom:1px solid var(--border);
+      white-space:nowrap;
+    }
+
+    tbody tr{
+      border-bottom:1px solid rgba(255,255,255,.04);
+      opacity:0;
+      animation:rowIn .4s ease forwards;
+      transition:background .15s;
+    }
+    tbody tr:last-child{border-bottom:none;}
+    tbody tr:hover{background:rgba(232,0,90,.06);}
+
+    @keyframes rowIn{
+      from{opacity:0;transform:translateX(-14px);}
+      to  {opacity:1;transform:translateX(0);}
+    }
+
+    td{padding:.8rem 1.1rem;font-size:.88rem;vertical-align:middle;}
+
+    /* Player number */
+    .num-cell{
+      text-align:right;
+      width:80px;
+      padding-right:1.5rem !important;
+      white-space:nowrap;
+    }
+    .player-num{
+      display:inline-flex;align-items:baseline;gap:1px;
+      font-variant-numeric:tabular-nums;
+    }
+    .player-num .n  {font-size:1.1rem;font-weight:900;letter-spacing:-.01em;}
+    .player-num .dot{font-size:.82rem;font-weight:700;opacity:.65;}
+
+    .p1 .n,.p1 .dot{color:var(--gold);   text-shadow:0 0 16px rgba(255,215,0,.65);}
+    .p2 .n,.p2 .dot{color:var(--silver); text-shadow:0 0 12px rgba(192,192,192,.4);}
+    .p3 .n,.p3 .dot{color:var(--bronze); text-shadow:0 0 12px rgba(205,127,50,.4);}
+    .pn .n          {color:#ffffff;}
+    .pn .dot        {color:var(--dim);}
+
+    /* Player name */
+    .player-cell{font-weight:700;color:#fff;white-space:nowrap;}
+    .player-pre{color:var(--pink);font-size:.7rem;font-weight:400;}
+
+    /* Accuracy bar (restored) */
+    .acc-wrap{display:flex;align-items:center;gap:10px;min-width:150px;}
+    .acc-pct{font-weight:700;color:var(--pink2);min-width:42px;font-size:.95rem;}
+    .bar-bg{flex:1;height:6px;background:rgba(255,255,255,.07);border-radius:3px;overflow:hidden;}
+    .bar-fill{
+      height:100%;border-radius:3px;
+      background:linear-gradient(90deg,#a0003a,var(--pink2));
+      box-shadow:0 0 8px var(--glow);
+    }
+
+    /* Accuracy secondary label */
+    .acc-dir{font-size:.64rem;color:var(--dim);white-space:nowrap;margin-left:6px;align-self:center;}
+
+    /* Rounds & influence */
+    .rounds{color:#ccc;font-variant-numeric:tabular-nums;}
+    .influence{color:var(--dim);font-size:.82rem;}
+
+    /* Arena tags */
+    .arena-tag{
+      display:inline-block;margin:2px;
+      padding:2px 8px;
+      background:rgba(232,0,90,.08);
+      border:1px solid rgba(232,0,90,.2);
+      border-radius:20px;
+      font-size:.62rem;color:var(--pink2);
+      white-space:nowrap;
+    }
+
+    /* Top-3 glow rows */
+    tr.podium{background:rgba(255,215,0,.02);}
+
+    /* Status badge */
+    .status{
+      display:inline-block;padding:1px 7px;
+      border-radius:4px;font-size:.6rem;letter-spacing:.1em;
+      font-weight:700;text-transform:uppercase;
+    }
+    .status.alive{background:rgba(232,0,90,.15);color:var(--pink2);}
+
+    /* ── No-data state ── */
+    #loading-screen{display:none;text-align:center;padding:5rem 1rem;}
+    #loading-screen h2{font-size:1.6rem;color:var(--pink2);margin-bottom:.75rem;letter-spacing:.1em;}
+    #loading-screen p{color:var(--dim);font-size:.85rem;line-height:1.9;}
+    .progress-bar{
+      width:260px;height:4px;
+      background:rgba(232,0,90,.15);
+      border-radius:2px;margin:1.5rem auto;overflow:hidden;
+    }
+    .progress-fill{
+      height:100%;background:var(--pink2);width:25%;border-radius:2px;
+      animation:sweep 2.2s ease-in-out infinite;
+    }
+    @keyframes sweep{0%{transform:translateX(-100%);}100%{transform:translateX(500%);}}
+
+    /* ── Footer ── */
+    footer{
+      text-align:center;padding:2.5rem 0 0;
+      font-size:.63rem;color:var(--dim);letter-spacing:.1em;
+    }
+    footer span{color:var(--pink);}
+    footer a{color:var(--pink2);text-decoration:none;}
+    footer a:hover{text-decoration:underline;}
+
+    /* Column header alignment */
+    thead th:first-child{text-align:right;padding-right:1.5rem;}
+
+    /* ── How It Works full page ── */
+    .hiw-grid-full{
+      display:grid;
+      grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+      gap:1.3rem;
+      margin-bottom:2rem;
+    }
+    .hiw-card{
+      background:var(--surface);
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:1.6rem;
+      transition:border-color .25s, background .25s;
+    }
+    .hiw-card:hover{
+      border-color:var(--pink);
+      background:rgba(232,0,90,.07);
+    }
+    .hiw-card-num{
+      font-size:.65rem;font-weight:900;letter-spacing:.2em;
+      color:var(--pink);opacity:.7;margin-bottom:.4rem;
+    }
+    .hiw-card-icon{font-size:1.8rem;margin-bottom:.6rem;}
+    .hiw-card-title{
+      font-size:.9rem;font-weight:800;color:#fff;
+      letter-spacing:.06em;margin-bottom:.7rem;text-transform:uppercase;
+    }
+    .hiw-card-body{
+      font-size:.78rem;color:rgba(255,255,255,.6);
+      line-height:1.8;
+    }
+    .hiw-card-body strong{color:rgba(255,255,255,.9);}
+    .hiw-card-body em{color:var(--dim);font-style:normal;}
+    .hiw-card-body code{
+      color:var(--pink2);background:rgba(232,0,90,.12);
+      padding:2px 6px;border-radius:3px;font-family:inherit;
+      display:inline-block;margin:2px 0;font-size:.75rem;
+    }
+
+    /* Signal results box */
+    .signal-box{
+      border:1px solid var(--border);border-radius:12px;
+      background:var(--surface);padding:1.6rem;
+      margin-bottom:2rem;
+    }
+    .signal-title{
+      font-size:.7rem;font-weight:800;letter-spacing:.18em;
+      color:var(--pink2);text-transform:uppercase;margin-bottom:1.2rem;
+    }
+    .signal-stats{
+      display:flex;flex-wrap:wrap;gap:0 3rem;margin-bottom:1rem;
+    }
+    .sig-stat{text-align:center;padding:.5rem 1rem;}
+    .sig-val{font-size:1.6rem;font-weight:900;color:var(--pink2);
+      text-shadow:0 0 18px var(--glow);}
+    .sig-lbl{font-size:.63rem;color:var(--dim);letter-spacing:.1em;margin-top:3px;}
+    .signal-note{
+      font-size:.75rem;color:rgba(255,255,255,.5);
+      line-height:1.7;border-top:1px solid var(--border);padding-top:1rem;
+    }
+
+    .horizon-table{display:flex;flex-direction:column;gap:.35rem;}
+    .ht-row{display:grid;grid-template-columns:55px 80px 1fr;gap:.5rem;align-items:center;font-size:.72rem;}
+    .ht-days{color:#fff;font-weight:700;}
+    .ht-ic{font-weight:800;font-family:inherit;}
+    .ht-note{color:var(--dim);}
+
+    /* ── Day slider ── */
+    .day-slider-wrap{
+      padding:1.1rem 1.4rem 1rem;
+      border:1px solid var(--border);border-radius:10px;
+      background:var(--surface);margin-bottom:1.3rem;
+    }
+    .ds-header{
+      display:flex;align-items:center;gap:.75rem;margin-bottom:.9rem;
+    }
+    .ds-label{font-size:.65rem;letter-spacing:.18em;color:var(--dim);text-transform:uppercase;}
+    .ds-value{font-size:1.15rem;font-weight:900;color:#fff;margin-left:auto;}
+    .ds-tag{
+      font-size:.6rem;font-weight:700;letter-spacing:.18em;text-transform:uppercase;
+      padding:.25rem .7rem;border-radius:20px;
+      background:rgba(232,0,90,.15);color:var(--pink2);border:1px solid rgba(232,0,90,.3);
+    }
+
+    .ds-track-wrap{display:flex;align-items:center;gap:.9rem;}
+    .ds-edge{font-size:.7rem;color:var(--dim);font-weight:600;white-space:nowrap;}
+
+    .ds-track{position:relative;flex:1;padding-bottom:1.4rem;}
+
+    input[type=range]{
+      -webkit-appearance:none;appearance:none;
+      width:100%;height:4px;border-radius:2px;outline:none;cursor:pointer;
+      background:linear-gradient(90deg,var(--pink) 0%,rgba(255,255,255,.12) 0%);
+    }
+    input[type=range]::-webkit-slider-thumb{
+      -webkit-appearance:none;appearance:none;
+      width:18px;height:18px;border-radius:50%;
+      background:var(--pink2);border:2px solid #fff;
+      box-shadow:0 0 10px var(--glow);cursor:pointer;
+      transition:transform .15s;
+    }
+    input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2);}
+    input[type=range]::-moz-range-thumb{
+      width:18px;height:18px;border-radius:50%;
+      background:var(--pink2);border:2px solid #fff;
+      box-shadow:0 0 10px var(--glow);cursor:pointer;border:none;
+    }
+
+    .ds-stops{
+      position:absolute;bottom:0;left:0;right:0;
+      display:flex;justify-content:space-between;
+      padding:0 9px;
+    }
+    .ds-stop{
+      font-size:.58rem;color:var(--dim);transition:color .2s;
+      cursor:pointer;text-align:center;
+    }
+    .ds-stop.active{color:var(--pink2);font-weight:700;}
+
+    .ds-sub{margin-top:.6rem;font-size:.7rem;color:var(--dim);font-style:italic;}
+
+    /* Meter legend bar */
+    .meter-legend{
+      display:flex;align-items:center;gap:1.2rem;flex-wrap:wrap;
+      padding:.7rem 1.2rem;
+      border:1px solid var(--border);border-radius:8px;
+      background:var(--surface);margin-bottom:1.2rem;font-size:.68rem;
+    }
+    .ml-label{color:var(--dim);letter-spacing:.12em;text-transform:uppercase;white-space:nowrap;}
+    .ml-tiers{display:flex;gap:1rem;flex-wrap:wrap;}
+    .ml-tier{letter-spacing:.04em;white-space:nowrap;}
+
+    /* ── How It Works collapsible (compare page) ── */
+    .how-it-works{
+      margin-bottom:2rem;
+      border:1px solid var(--border);
+      border-radius:10px;
+      overflow:hidden;
+      background:var(--surface);
+    }
+    .hiw-toggle{
+      width:100%;display:flex;justify-content:space-between;align-items:center;
+      padding:1rem 1.4rem;
+      background:none;border:none;color:#fff;
+      font-family:inherit;font-size:.78rem;font-weight:700;
+      letter-spacing:.15em;text-transform:uppercase;
+      cursor:pointer;transition:background .2s;
+    }
+    .hiw-toggle:hover{background:rgba(232,0,90,.06);}
+    #hiw-arrow{color:var(--pink);transition:transform .3s;}
+    .hiw-body{
+      display:none;
+      padding:1.5rem;
+      border-top:1px solid var(--border);
+    }
+    .hiw-body.open{display:block;}
+    .hiw-grid{
+      display:grid;
+      grid-template-columns:repeat(auto-fill,minmax(280px,1fr));
+      gap:1.2rem;
+    }
+    .hiw-step{
+      display:flex;gap:1rem;align-items:flex-start;
+      padding:1rem;
+      background:rgba(232,0,90,.04);
+      border:1px solid rgba(232,0,90,.1);
+      border-radius:8px;
+    }
+    .hiw-num{
+      font-size:1.5rem;font-weight:900;color:var(--pink);
+      opacity:.6;min-width:32px;line-height:1;
+      text-shadow:0 0 12px var(--glow);
+    }
+    .hiw-title{
+      font-size:.78rem;font-weight:700;color:var(--pink2);
+      letter-spacing:.08em;margin-bottom:.4rem;text-transform:uppercase;
+    }
+    .hiw-desc{
+      font-size:.75rem;color:rgba(255,255,255,.6);line-height:1.7;
+    }
+    .hiw-desc code{
+      color:var(--pink2);background:rgba(232,0,90,.12);
+      padding:1px 5px;border-radius:3px;font-family:inherit;
+      display:inline-block;margin:3px 0;
+    }
+
+    /* ── Horizon toggle ── */
+    .horizon-toggle{
+      display:flex;align-items:center;gap:1rem;flex-wrap:wrap;
+      padding:.8rem 1.2rem;
+      border:1px solid var(--border);border-radius:8px;
+      background:var(--surface);margin-bottom:1.2rem;
+    }
+    .ht-label{font-size:.65rem;letter-spacing:.15em;color:var(--dim);text-transform:uppercase;white-space:nowrap;}
+    .ht-pills{display:flex;gap:.4rem;}
+    .ht-pill{
+      background:none;border:1px solid var(--border);
+      color:var(--dim);font-family:inherit;font-size:.72rem;
+      letter-spacing:.1em;padding:.38rem 1rem;border-radius:20px;
+      cursor:pointer;transition:all .2s;white-space:nowrap;
+    }
+    .ht-pill:hover{color:#fff;border-color:rgba(232,0,90,.4);}
+    .ht-pill.active{color:var(--pink2);border-color:var(--pink);background:rgba(232,0,90,.1);}
+    .ht-hint{font-size:.65rem;color:var(--dim);font-style:italic;}
+
+    /* ── Top nav / tabs ── */
+    .top-nav{
+      position:sticky;top:0;z-index:100;
+      display:flex;align-items:center;justify-content:space-between;
+      padding:.85rem 2rem;
+      background:rgba(6,0,13,.88);
+      backdrop-filter:blur(14px);
+      border-bottom:1px solid var(--border);
+    }
+    .nav-brand{
+      font-size:.95rem;font-weight:900;letter-spacing:.18em;
+      text-transform:uppercase;
+      background:linear-gradient(90deg,#fff 20%,var(--pink2));
+      -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+    }
+    .nav-tabs{display:flex;gap:.5rem;}
+    .tab-btn{
+      background:none;border:1px solid transparent;
+      color:var(--dim);font-family:inherit;font-size:.72rem;
+      letter-spacing:.15em;text-transform:uppercase;
+      padding:.45rem 1.1rem;border-radius:6px;
+      cursor:pointer;transition:all .2s;
+    }
+    .tab-btn:hover{color:#fff;border-color:var(--border);}
+    .tab-btn.active{
+      color:var(--pink2);border-color:var(--pink);
+      background:rgba(232,0,90,.1);
+      text-shadow:0 0 10px var(--glow);
+    }
+
+    /* ── Tab panels ── */
+    .panel{display:none;}
+    .panel.active{display:block;}
+
+    /* ── Compare page ── */
+    .compare-hero{text-align:center;padding:3rem 0 2rem;}
+    .compare-hero h2{
+      font-size:clamp(1.3rem,3.5vw,2rem);font-weight:900;
+      letter-spacing:.15em;text-transform:uppercase;
+      color:#fff;margin-bottom:.5rem;
+    }
+    .compare-hero p{color:var(--dim);font-size:.8rem;letter-spacing:.1em;}
+
+    .compare-grid{
+      display:grid;grid-template-columns:1fr auto 1fr;
+      gap:1.5rem;align-items:start;margin-bottom:2rem;
+    }
+    .player-card{
+      background:var(--surface);border:1px solid var(--border);
+      border-radius:12px;padding:1.5rem;
+      transition:border-color .3s;
+    }
+    .player-card.selected{border-color:var(--pink);}
+    .card-label{
+      font-size:.6rem;letter-spacing:.2em;color:var(--dim);
+      text-transform:uppercase;margin-bottom:.75rem;
+    }
+    .card-select{
+      width:100%;background:#0e000a;color:#fff;
+      border:1px solid var(--border);border-radius:6px;
+      font-family:inherit;font-size:.85rem;padding:.5rem .75rem;
+      outline:none;cursor:pointer;
+    }
+    .card-select:focus{border-color:var(--pink);}
+    .card-stats{margin-top:1.2rem;}
+    .cs-row{
+      display:flex;justify-content:space-between;align-items:center;
+      padding:.45rem 0;border-bottom:1px solid rgba(255,255,255,.05);
+      font-size:.8rem;
+    }
+    .cs-row:last-child{border-bottom:none;}
+    .cs-key{color:var(--dim);font-size:.72rem;letter-spacing:.08em;}
+    .cs-val{font-weight:700;}
+    .cs-val.win{color:var(--pink2);}
+    .cs-val.lose{color:var(--dim);}
+    .cs-val.tie{color:#fff;}
+
+    .vs-divider{
+      display:flex;align-items:center;justify-content:center;
+      font-size:1.6rem;font-weight:900;color:var(--pink);
+      text-shadow:0 0 20px var(--glow);
+      padding-top:3rem;letter-spacing:.05em;
+    }
+
+    /* Bar comparison */
+    .compare-bars{
+      background:var(--surface);border:1px solid var(--border);
+      border-radius:12px;padding:1.5rem;margin-bottom:1.5rem;
+    }
+    .compare-bars h3{
+      font-size:.7rem;letter-spacing:.18em;color:var(--dim);
+      text-transform:uppercase;margin-bottom:1.2rem;
+    }
+    .cbar-row{margin-bottom:1rem;}
+    .cbar-label{
+      display:flex;justify-content:space-between;
+      font-size:.75rem;margin-bottom:.35rem;
+    }
+    .cbar-label .metric{color:var(--dim);font-size:.68rem;letter-spacing:.1em;}
+    .cbar-label .v1{color:var(--pink2);}
+    .cbar-label .v2{color:#6bbfff;}
+    .cbar-track{
+      position:relative;height:8px;
+      background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden;
+    }
+    .cbar-a{
+      position:absolute;left:0;top:0;height:100%;border-radius:4px;
+      background:linear-gradient(90deg,#a0003a,var(--pink2));
+      transition:width 1s cubic-bezier(.22,.61,.36,1);
+      box-shadow:0 0 6px var(--glow);
+    }
+    .cbar-b{
+      position:absolute;right:0;top:0;height:100%;border-radius:4px;
+      background:linear-gradient(270deg,#004a9a,#6bbfff);
+      transition:width 1s cubic-bezier(.22,.61,.36,1);
+    }
+
+    /* Subreddit breakdown */
+    .sub-breakdown{
+      background:var(--surface);border:1px solid var(--border);
+      border-radius:12px;padding:1.5rem;
+    }
+    .sub-breakdown h3{
+      font-size:.7rem;letter-spacing:.18em;color:var(--dim);
+      text-transform:uppercase;margin-bottom:1.2rem;
+    }
+    .sub-row{
+      display:flex;align-items:center;gap:1rem;
+      padding:.5rem 0;border-bottom:1px solid rgba(255,255,255,.04);
+      font-size:.82rem;
+    }
+    .sub-row:last-child{border-bottom:none;}
+    .sub-name{color:var(--pink2);min-width:140px;font-size:.78rem;}
+    .sub-bar-wrap{flex:1;height:5px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden;}
+    .sub-bar{height:100%;border-radius:3px;
+      background:linear-gradient(90deg,#a0003a,var(--pink2));
+      transition:width 1.1s cubic-bezier(.22,.61,.36,1);}
+    .sub-count{color:var(--dim);font-size:.72rem;min-width:60px;text-align:right;}
+
+    /* ── Analyst profile panel ── */
+    .back-btn{
+      display:inline-flex;align-items:center;gap:.5rem;
+      margin:2rem 0 1.5rem;
+      background:none;border:1px solid var(--border);
+      color:var(--dim);font-family:inherit;font-size:.72rem;
+      letter-spacing:.15em;text-transform:uppercase;
+      padding:.45rem 1.1rem;border-radius:6px;
+      cursor:pointer;transition:all .2s;
+    }
+    .back-btn:hover{color:#fff;border-color:var(--pink);background:rgba(232,0,90,.06);}
+
+    .analyst-hero{
+      display:flex;flex-wrap:wrap;align-items:flex-start;
+      gap:1.5rem;padding:1.5rem;
+      border:1px solid var(--border);border-radius:12px;
+      background:var(--surface);margin-bottom:1.5rem;
+    }
+    .analyst-name-block{flex:1;min-width:200px;}
+    .analyst-handle{
+      font-size:clamp(1.1rem,3vw,1.8rem);font-weight:900;
+      color:#fff;letter-spacing:.05em;
+    }
+    .analyst-handle .at{color:var(--pink);font-size:.75em;font-weight:400;}
+    .analyst-subs{margin-top:.4rem;display:flex;flex-wrap:wrap;gap:.35rem;}
+
+    .analyst-stat-row{
+      display:flex;flex-wrap:wrap;gap:1.5rem;align-items:center;
+    }
+    .analyst-stat{text-align:center;min-width:80px;}
+    .analyst-stat-val{
+      font-size:1.6rem;font-weight:900;
+      color:var(--pink2);text-shadow:0 0 18px var(--glow);
+    }
+    .analyst-stat-lbl{
+      font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;
+      color:var(--dim);margin-top:2px;
+    }
+
+    /* Horizon accuracy grid */
+    .horizon-grid-title{
+      font-size:.65rem;font-weight:700;letter-spacing:.18em;
+      color:var(--dim);text-transform:uppercase;margin-bottom:.8rem;
+    }
+    .horizon-grid{
+      display:grid;
+      grid-template-columns:repeat(4,1fr);
+      gap:.5rem;margin-bottom:1.5rem;
+    }
+    @media(max-width:600px){.horizon-grid{grid-template-columns:repeat(2,1fr);}}
+    .hg-cell{
+      padding:.7rem .9rem;
+      border:1px solid var(--border);border-radius:8px;
+      background:var(--surface);
+    }
+    .hg-cell.primary{border-color:var(--pink);background:rgba(232,0,90,.06);}
+    .hg-days{font-size:.6rem;letter-spacing:.12em;color:var(--dim);margin-bottom:.25rem;text-transform:uppercase;}
+    .hg-acc{font-size:1.1rem;font-weight:900;color:var(--pink2);}
+    .hg-acc.dim{color:var(--dim);font-size:.85rem;}
+    .hg-calls{font-size:.6rem;color:var(--dim);margin-top:2px;}
+
+    /* Prediction cards */
+    .pred-section-title{
+      font-size:.65rem;font-weight:700;letter-spacing:.18em;
+      color:var(--dim);text-transform:uppercase;margin-bottom:.8rem;
+    }
+    .pred-card{
+      border:1px solid var(--border);border-radius:10px;
+      background:var(--surface);padding:1.1rem 1.3rem;
+      margin-bottom:.75rem;transition:border-color .2s;
+    }
+    .pred-card:hover{border-color:rgba(232,0,90,.35);}
+    .pred-header{display:flex;align-items:center;flex-wrap:wrap;gap:.6rem;margin-bottom:.6rem;}
+    .pred-ticker{
+      font-size:1rem;font-weight:900;letter-spacing:.05em;color:#fff;
+    }
+    .stance-pill{
+      display:inline-block;padding:2px 10px;border-radius:20px;
+      font-size:.62rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+    }
+    .stance-bull{background:rgba(232,0,90,.18);color:var(--pink2);border:1px solid rgba(232,0,90,.3);}
+    .stance-bear{background:rgba(100,180,255,.1);color:#6bbfff;border:1px solid rgba(100,180,255,.25);}
+    .pred-meta{font-size:.65rem;color:var(--dim);display:flex;flex-wrap:wrap;gap:.6rem;}
+    .pred-meta span{white-space:nowrap;}
+    .pred-tier{
+      display:inline-flex;align-items:center;gap:3px;
+      font-size:.62rem;color:var(--dim);
+    }
+    .tier-dot{
+      width:6px;height:6px;border-radius:50%;
+      background:var(--dim);display:inline-block;
+    }
+    .tier-dot.lit{background:var(--pink2);}
+    .pred-rationale{
+      font-size:.78rem;color:rgba(255,255,255,.7);
+      line-height:1.7;margin-top:.5rem;
+      font-style:italic;
+    }
+    .pred-body{
+      font-size:.74rem;color:rgba(255,255,255,.45);
+      line-height:1.65;margin-top:.45rem;
+      border-top:1px solid rgba(255,255,255,.05);
+      padding-top:.45rem;
+      white-space:pre-wrap;word-break:break-word;
+    }
+    .no-preds{color:var(--dim);font-size:.85rem;padding:2rem 0;}
+    .analyst-loading{color:var(--dim);font-size:.85rem;padding:3rem 0;text-align:center;}
+
+    /* Make leaderboard names clickable */
+    .player-cell{cursor:pointer;}
+    .player-cell:hover .player-name-text{color:var(--pink2);text-decoration:underline;}
+  </style>
+</head>
+<body>
+
+<canvas id="bg-canvas"></canvas>
+<div class="grid"></div>
+<div class="vignette"></div>
+<div id="particles"></div>
+
+<!-- ── Sticky top nav ── -->
+<nav class="top-nav">
+  <span class="nav-brand">○ The Market Games △</span>
+  <div class="nav-tabs">
+    <button class="tab-btn active" data-tab="leaderboard" onclick="switchTab('leaderboard',this)">🏆 Leaderboard</button>
+    <button class="tab-btn"        data-tab="compare"     onclick="switchTab('compare',this)">⚔️ Compare Players</button>
+    <button class="tab-btn"        data-tab="howto"       onclick="switchTab('howto',this)">📖 How It Works</button>
+  </div>
+</nav>
+
+<!-- ══════════ PANEL 1 — LEADERBOARD ══════════ -->
+<div id="panel-leaderboard" class="panel active">
+<div class="page">
+
+  <header>
+    <div class="crown-row">
+      <span class="crown">◆</span>
+      <h1>The Market Games</h1>
+      <span class="crown">◆</span>
+    </div>
+    <div class="subtitle">Reddit Stock Arena &nbsp;·&nbsp; Season 2026</div>
+    <div class="tagline">We track Reddit stock predictions and check if they came true.</div>
+    <div class="shapes-row">○ &nbsp; △ &nbsp; □</div>
+    <div class="live-badge">
+      <span class="live-dot"></span>
+      <span id="live-label">Loading players...</span>
+    </div>
+  </header>
+
+  <!-- Day slider -->
+  <div class="day-slider-wrap" id="day-slider-wrap" style="display:none">
+    <div class="ds-header">
+      <span class="ds-label">Prediction Horizon</span>
+      <span class="ds-value" id="ds-value">5 Days</span>
+      <span class="ds-tag" id="ds-tag">SHORT-TERM</span>
+    </div>
+    <div class="ds-track-wrap">
+      <span class="ds-edge">1d</span>
+      <div class="ds-track">
+        <input type="range" id="day-range" min="0" max="7" step="1" value="1"
+               oninput="onSlide(this.value)">
+        <div class="ds-stops">
+          <span class="ds-stop active" data-i="0">1d</span>
+          <span class="ds-stop active" data-i="1">5d</span>
+          <span class="ds-stop" data-i="2">10d</span>
+          <span class="ds-stop" data-i="3">20d</span>
+          <span class="ds-stop" data-i="4">60d</span>
+          <span class="ds-stop" data-i="5">90d</span>
+          <span class="ds-stop" data-i="6">180d</span>
+          <span class="ds-stop" data-i="7">365d</span>
+        </div>
+      </div>
+      <span class="ds-edge">365d</span>
+    </div>
+    <div class="ds-sub">
+      <span id="ds-desc">Earnings plays, catalysts, momentum — resolves in days</span>
+      <span style="margin-left:.8rem;color:rgba(255,255,255,.3)">&middot; "—" means not enough time has passed to verify predictions at this horizon yet</span>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-bar" id="stats-bar" style="display:none">
+    <div class="stat">
+      <div class="stat-val" id="s-analysts">—</div>
+      <div class="stat-lbl">Players Tracked</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val" id="s-accuracy">—</div>
+      <div class="stat-lbl">Avg Accuracy</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val" id="s-calls">—</div>
+      <div class="stat-lbl">Verified Predictions</div>
+    </div>
+    <div class="stat">
+      <div class="stat-val" id="s-updated">—</div>
+      <div class="stat-lbl">Last Updated</div>
+    </div>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading-screen" style="display:none">
+    <h2>⚡ Games In Progress</h2>
+    <p>Processing ~44,000 Reddit contestants<br>with DeepSeek — highest-quality scoring.</p>
+    <div class="progress-bar"><div class="progress-fill"></div></div>
+    <p>Run <code style="color:var(--pink2)">make credibility</code> after scoring to reveal the survivors.</p>
+  </div>
+
+  <!-- Coin-flip context -->
+  <div id="coinflip-note" class="meter-legend" style="display:none">
+    <span class="ml-label">How to read</span>
+    <div class="ml-tiers">
+      <span class="ml-tier" style="color:var(--pink2)">Avg Return — how big the moves were (ranked by this)</span>
+      <span class="ml-tier" style="color:var(--dim)">·</span>
+      <span class="ml-tier" style="color:#aaa">Accuracy — % of calls that went the right way (50% = coin flip)</span>
+    </div>
+  </div>
+
+  <!-- Leaderboard -->
+  <div class="table-wrap" id="table-wrap" style="display:none">
+    <table>
+      <thead>
+        <tr>
+          <th>Rank</th>
+          <th>Analyst</th>
+          <th>Avg Return &nbsp;·&nbsp; Accuracy</th>
+          <th>Verified Predictions</th>
+          <th>Avg Upvotes</th>
+          <th>Subreddits</th>
+        </tr>
+      </thead>
+      <tbody id="tbody"></tbody>
+    </table>
+  </div>
+
+  <footer>
+    <p>Scored by AI &nbsp;·&nbsp; 0% = no edge &nbsp;·&nbsp; Avg return × call volume = higher rank</p>
+    <p style="margin-top:.5rem">
+      <a href="https://github.com/Tejaslingamaneni/reddit-momentum-signal" target="_blank">github.com/Tejaslingamaneni/reddit-momentum-signal</a>
+      &nbsp;·&nbsp; <span>○ △ □</span>
+    </p>
+  </footer>
+
+</div><!-- /.page -->
+</div><!-- /#panel-leaderboard -->
+
+<!-- ══════════ PANEL 2 — COMPARE ══════════ -->
+<div id="panel-compare" class="panel">
+<div class="page">
+
+  <div class="compare-hero">
+    <h2>⚔ Head-to-Head · Player Comparison</h2>
+    <p>Select two contestants and see who has the edge</p>
+  </div>
+
+  <!-- How accuracy is measured -->
+  <div class="how-it-works">
+    <button class="hiw-toggle" onclick="toggleHIW()">
+      <span>□ &nbsp;How Accuracy Is Measured</span>
+      <span id="hiw-arrow">▼</span>
+    </button>
+    <div class="hiw-body" id="hiw-body">
+      <div class="hiw-grid">
+
+        <div class="hiw-step">
+          <div class="hiw-num">01</div>
+          <div class="hiw-content">
+            <div class="hiw-title">Collecting Predictions</div>
+            <div class="hiw-desc">~1.1M Reddit comments from 13 investing subreddits. Any comment naming a real stock ticker (Russell 3000) with a clear bullish or bearish view becomes a candidate prediction.</div>
+          </div>
+        </div>
+
+        <div class="hiw-step">
+          <div class="hiw-num">02</div>
+          <div class="hiw-content">
+            <div class="hiw-title">Filtering Real Reasoning</div>
+            <div class="hiw-desc">DeepSeek reads each comment and filters out noise — "NVDA to the moon 🚀" doesn't count. Only comments that cite earnings, catalysts, or specific evidence qualify as predictions.</div>
+          </div>
+        </div>
+
+        <div class="hiw-step">
+          <div class="hiw-num">03</div>
+          <div class="hiw-content">
+            <div class="hiw-title">Checking if They Were Right</div>
+            <div class="hiw-desc">Each prediction is checked against actual stock prices. A call is "correct" only if the stock <em>beat the S&amp;P 500</em> — just going up isn't enough, it has to outperform the broader market.</div>
+          </div>
+        </div>
+
+        <div class="hiw-step">
+          <div class="hiw-num">04</div>
+          <div class="hiw-content">
+            <div class="hiw-title">Ranking the Best</div>
+            <div class="hiw-desc">Win rate is adjusted toward 50% (coin flip) so lucky one-offs don't dominate. A single correct call gives ~67% accuracy, not 100%. You need both accuracy AND volume to rank high.</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="compare-grid">
+    <!-- Player A -->
+    <div class="player-card" id="card-a">
+      <div class="card-label">○ &nbsp;Player A</div>
+      <select class="card-select" id="sel-a" onchange="updateCompare()">
+        <option value="">— Select a player —</option>
+      </select>
+      <div class="card-stats" id="stats-a"></div>
+    </div>
+
+    <!-- VS -->
+    <div class="vs-divider">VS</div>
+
+    <!-- Player B -->
+    <div class="player-card" id="card-b">
+      <div class="card-label">△ &nbsp;Player B</div>
+      <select class="card-select" id="sel-b" onchange="updateCompare()">
+        <option value="">— Select a player —</option>
+      </select>
+      <div class="card-stats" id="stats-b"></div>
+    </div>
+  </div>
+
+  <!-- Head-to-head bars -->
+  <div class="compare-bars" id="compare-bars" style="display:none">
+    <h3>□ &nbsp;Head-to-Head Breakdown</h3>
+    <div id="bars-container"></div>
+  </div>
+
+  <!-- Subreddit breakdown -->
+  <div class="sub-breakdown">
+    <h3>○ &nbsp;Arena Breakdown · Analysts per Subreddit</h3>
+    <div id="sub-rows"></div>
+  </div>
+
+  <footer style="margin-top:3rem">
+    <p>The Market Games · <span>○ △ □</span> · May the best thesis survive</p>
+  </footer>
+
+</div><!-- /.page -->
+</div><!-- /#panel-compare -->
+
+<!-- ══════════ PANEL 3 — HOW IT WORKS ══════════ -->
+<div id="panel-howto" class="panel">
+<div class="page">
+
+  <div class="compare-hero">
+    <h2>□ How Accuracy Is Measured</h2>
+    <p>The full pipeline — from Reddit comment to ranked analyst</p>
+  </div>
+
+  <div class="hiw-grid-full">
+
+    <div class="hiw-card">
+      <div class="hiw-card-num">01</div>
+      <div class="hiw-card-icon">📥</div>
+      <div class="hiw-card-title">Collecting Predictions</div>
+      <div class="hiw-card-body">
+        We pull ~1.1 million Reddit comments from 13 investing subreddits — <em>stocks, investing, SecurityAnalysis, options, thetagang, dividends, Vitards</em> and more. Any comment that mentions a real stock ticker (Russell 3000 universe) and expresses a directional view becomes a candidate prediction.
+      </div>
+    </div>
+
+    <div class="hiw-card">
+      <div class="hiw-card-num">02</div>
+      <div class="hiw-card-icon">🤖</div>
+      <div class="hiw-card-title">Filtering for Real Reasoning</div>
+      <div class="hiw-card-body">
+        <strong>DeepSeek</strong> reads each comment and filters out noise — rocket emojis and memes don't count. Only comments that make a clear bull or bear call with some reasoning qualify.<br><br>
+        <strong>Excluded:</strong> "NVDA to the moon 🚀" — no reasoning.<br>
+        <strong>Counts:</strong> "AAPL is undervalued, they have $160B in cash and PE is below sector avg."<br><br>
+        This removes ~60% of all mentions, keeping only genuine stock calls.
+      </div>
+    </div>
+
+    <div class="hiw-card">
+      <div class="hiw-card-num">03</div>
+      <div class="hiw-card-icon">📈</div>
+      <div class="hiw-card-title">Checking if They Were Right</div>
+      <div class="hiw-card-body">
+        Each prediction is checked at <strong>8 time horizons</strong> — 1 day, 5 days, 10, 20, 60, 90, 180, and 365 days out. The slider on the leaderboard lets you choose which horizon to rank by.<br><br>
+        We measure the <strong>raw return in the predicted direction</strong> — if you said bullish on NVDA and NVDA went up 40%, you score +40%. If it dropped 5%, you score −5%. For bearish calls, a stock falling 20% scores +20%. Analysts are ranked by their average return per call, so picking big movers matters more than being barely right.<br><br>
+        <strong>Why some analysts show "—":</strong> We require at least 3 resolved predictions to display a score at a given horizon. An analyst who posted recently won't have enough time elapsed to verify long-horizon calls yet.
+      </div>
+    </div>
+
+    <div class="hiw-card">
+      <div class="hiw-card-num">04</div>
+      <div class="hiw-card-icon">🏆</div>
+      <div class="hiw-card-title">Ranking the Best</div>
+      <div class="hiw-card-body">
+        Average return is shrunk toward <strong>0% (no-edge baseline)</strong> so a single lucky +100% call doesn't dominate. One call contributing +50% gets blended down. You need many big correct calls to rank high.<br><br>
+        Final position rewards analysts who are both <strong>accurate</strong> and <strong>active</strong>. An analyst with 60% accuracy across 20 verified predictions outranks a one-hit wonder with 80% on 2 calls.<br><br>
+        <strong>Influence</strong> = average upvotes per comment. High accuracy + low upvotes = under-the-radar analyst the crowd hasn't found yet.
+      </div>
+    </div>
+
+  </div>
+
+  <div class="signal-box">
+    <div class="signal-title">○ &nbsp;Does This Actually Work?</div>
+    <div class="signal-stats">
+      <div class="sig-stat">
+        <div class="sig-val">44,000+</div>
+        <div class="sig-lbl">Comments scored</div>
+      </div>
+      <div class="sig-stat">
+        <div class="sig-val">498</div>
+        <div class="sig-lbl">Analysts ranked</div>
+      </div>
+      <div class="sig-stat">
+        <div class="sig-val">60d</div>
+        <div class="sig-lbl">Primary accuracy horizon</div>
+      </div>
+      <div class="sig-stat">
+        <div class="sig-val">0%</div>
+        <div class="sig-lbl">No-edge baseline</div>
+      </div>
+    </div>
+    <div class="signal-note">
+      <strong>The rankings reward analysts who find big movers.</strong> We measure the actual return in the predicted direction — picking a stock that went up 40% scores 10x better than picking one that went up 4%. Average returns are shrunk toward 0% so a single lucky call can't dominate. We require a minimum of 3 verified predictions before scoring anyone, and volume matters: many strong calls beats a few lucky ones.
+    </div>
+  </div>
+
+  <footer style="margin-top:3rem">
+    <p>The Market Games · <span>○ △ □</span> · Powered by DeepSeek + DuckDB + Python</p>
+    <p style="margin-top:.4rem">
+      <a href="https://github.com/Tejaslingamaneni/reddit-momentum-signal" target="_blank">github.com/Tejaslingamaneni/reddit-momentum-signal</a>
+    </p>
+  </footer>
+
+</div>
+</div><!-- /#panel-howto -->
+
+<!-- ══════════ PANEL 4 — ANALYST PROFILE ══════════ -->
+<div id="panel-analyst" class="panel">
+<div class="page">
+
+  <button class="back-btn" onclick="closeAnalyst()">← Back to Leaderboard</button>
+
+  <div id="analyst-content">
+    <div class="analyst-loading">Loading analyst profile...</div>
+  </div>
+
+</div>
+</div><!-- /#panel-analyst -->
+
+<script>
+/* ── Live scrolling stock chart ─────────────────────────────── */
+(function(){
+  const canvas = document.getElementById('bg-canvas');
+  const ctx    = canvas.getContext('2d');
+  let W, H;
+
+  /* Candlestick data: each candle = { o, h, l, c, x } */
+  const CANDLE_W   = 18;   // px width per candle
+  const SCROLL_SPD = 0.6;  // px per frame — how fast it scrolls
+  const TICK_EVERY = 28;   // frames between new price ticks inside a candle
+  const NEW_CANDLE = 90;   // frames per candle
+
+  let price    = 180;      // starting "price"
+  let candles  = [];
+  let subTick  = 0;
+  let frameCnt = 0;
+  let curCandle= null;     // candle being built right now
+
+  function resize(){
+    W = canvas.width  = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+    if(!candles.length) seedCandles();
+  }
+
+  /* Generate a realistic-ish price move */
+  function nextPrice(p){
+    const vol    = p * 0.008;               // 0.8% volatility per tick
+    const drift  = p * 0.0003;              // very slight upward drift
+    const shock  = Math.random() < 0.04 ? (Math.random()-0.5)*p*0.04 : 0; // rare spike
+    return Math.max(p * 0.85, p + drift + (Math.random()-0.48)*vol + shock);
+  }
+
+  function newCandle(x){
+    const o = price;
+    return { o, h:o, l:o, c:o, x };
+  }
+
+  function seedCandles(){
+    /* Fill screen with historical candles scrolling in from left */
+    const n = Math.ceil(W / CANDLE_W) + 8;
+    price = 180;
+    candles = [];
+    for(let i=0;i<n;i++){
+      const c = newCandle(i * CANDLE_W);
+      const ticks = 6 + Math.floor(Math.random()*10);
+      for(let t=0;t<ticks;t++){
+        price = nextPrice(price);
+        c.h = Math.max(c.h, price);
+        c.l = Math.min(c.l, price);
+        c.c = price;
+      }
+      candles.push(c);
+    }
+    curCandle = newCandle(candles.length * CANDLE_W);
+  }
+
+  /* Map price → canvas Y (flipped: higher price = higher on screen) */
+  function priceToY(p){
+    const visible = candles.concat(curCandle ? [curCandle] : []);
+    const prices  = visible.flatMap(c=>[c.h,c.l]);
+    const mn = Math.min(...prices) * 0.995;
+    const mx = Math.max(...prices) * 1.005;
+    return H*0.12 + (1 - (p-mn)/(mx-mn)) * (H*0.72);
+  }
+
+  function drawHoneycomb(){
+    const r=30, hh=r*Math.sqrt(3);
+    const cols=Math.ceil(W/(r*3))+2, rows=Math.ceil(H/hh)+2;
+    ctx.strokeStyle='rgba(232,0,90,.04)';
+    ctx.lineWidth=1;
+    for(let row=0;row<rows;row++){
+      for(let col=0;col<cols;col++){
+        const cx=col*r*3+(row%2?r*1.5:0)-r;
+        const cy=row*hh-hh/2;
+        ctx.beginPath();
+        for(let k=0;k<6;k++){
+          const a=Math.PI/180*(60*k-30);
+          k===0 ? ctx.moveTo(cx+r*Math.cos(a),cy+r*Math.sin(a))
+                : ctx.lineTo(cx+r*Math.cos(a),cy+r*Math.sin(a));
+        }
+        ctx.closePath(); ctx.stroke();
+      }
+    }
+  }
+
+  function draw(){
+    frameCnt++;
+    ctx.clearRect(0,0,W,H);
+    drawHoneycomb();
+
+    /* Scroll: shift all candle x positions left */
+    candles.forEach(c=>{ c.x -= SCROLL_SPD; });
+    if(curCandle) curCandle.x -= SCROLL_SPD;
+
+    /* Remove candles that scrolled fully off-screen */
+    while(candles.length && candles[0].x + CANDLE_W < 0) candles.shift();
+
+    /* Build current candle tick by tick */
+    subTick++;
+    if(subTick % TICK_EVERY === 0){
+      price = nextPrice(price);
+      if(curCandle){
+        curCandle.h = Math.max(curCandle.h, price);
+        curCandle.l = Math.min(curCandle.l, price);
+        curCandle.c = price;
+      }
+    }
+
+    /* Finish current candle, start new one */
+    if(frameCnt % NEW_CANDLE === 0 && curCandle){
+      candles.push(curCandle);
+      curCandle = newCandle(curCandle.x + CANDLE_W);
+    }
+
+    const allC = curCandle ? [...candles, curCandle] : candles;
+    if(allC.length < 2){ requestAnimationFrame(draw); return; }
+
+    /* Draw candlestick bodies + wicks */
+    allC.forEach((c,i)=>{
+      const bull = c.c >= c.o;
+      const bodyT = priceToY(Math.max(c.o,c.c));
+      const bodyB = priceToY(Math.min(c.o,c.c));
+      const bodyH = Math.max(bodyB - bodyT, 2);
+      const cx    = c.x + CANDLE_W/2;
+
+      /* Wick */
+      ctx.strokeStyle = bull ? 'rgba(232,0,90,.5)' : 'rgba(120,0,40,.4)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(cx, priceToY(c.h));
+      ctx.lineTo(cx, priceToY(c.l));
+      ctx.stroke();
+
+      /* Body */
+      const alpha = (i === allC.length-1) ? 0.85 : 0.35;
+      ctx.fillStyle = bull ? `rgba(232,0,90,${alpha})` : `rgba(60,0,25,${alpha})`;
+      ctx.fillRect(c.x+1, bodyT, CANDLE_W-2, bodyH);
+
+      /* Highlight current candle */
+      if(i === allC.length-1){
+        ctx.strokeStyle='rgba(255,60,130,.9)';
+        ctx.lineWidth=1;
+        ctx.strokeRect(c.x+1, bodyT, CANDLE_W-2, bodyH);
+      }
+    });
+
+    /* Live price line — connect close prices */
+    const lineGrad = ctx.createLinearGradient(0,0,W,0);
+    lineGrad.addColorStop(0,'rgba(232,0,90,0)');
+    lineGrad.addColorStop(0.3,'rgba(232,0,90,.5)');
+    lineGrad.addColorStop(1,'rgba(255,80,140,1)');
+
+    ctx.beginPath();
+    allC.forEach((c,i)=>{
+      const x = c.x + CANDLE_W/2;
+      const y = priceToY(c.c);
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.strokeStyle = lineGrad;
+    ctx.lineWidth   = 2;
+    ctx.shadowColor = '#e8005a';
+    ctx.shadowBlur  = 12;
+    ctx.stroke();
+    ctx.shadowBlur  = 0;
+
+    /* Glowing dot at live price */
+    const lc = allC[allC.length-1];
+    const lx = lc.x + CANDLE_W/2;
+    const ly = priceToY(lc.c);
+    ctx.beginPath();
+    ctx.arc(lx, ly, 4, 0, Math.PI*2);
+    ctx.fillStyle = '#ff3388';
+    ctx.shadowColor = '#ff3388';
+    ctx.shadowBlur  = 16;
+    ctx.fill();
+    ctx.shadowBlur  = 0;
+
+    /* Gradient fill under line */
+    const fillGrad = ctx.createLinearGradient(0, ly, 0, H);
+    fillGrad.addColorStop(0,'rgba(232,0,90,.18)');
+    fillGrad.addColorStop(1,'rgba(232,0,90,0)');
+    ctx.beginPath();
+    allC.forEach((c,i)=>{
+      const x=c.x+CANDLE_W/2, y=priceToY(c.c);
+      i===0 ? ctx.moveTo(x,y) : ctx.lineTo(x,y);
+    });
+    ctx.lineTo(lx, H); ctx.lineTo(allC[0].x+CANDLE_W/2, H);
+    ctx.fillStyle = fillGrad;
+    ctx.fill();
+
+    /* Live price label */
+    const label = price.toFixed(2);
+    ctx.fillStyle='rgba(232,0,90,.9)';
+    ctx.fillRect(lx+8, ly-10, label.length*7+8, 20);
+    ctx.fillStyle='#fff';
+    ctx.font='bold 11px monospace';
+    ctx.fillText(label, lx+12, ly+4);
+
+    requestAnimationFrame(draw);
+  }
+
+  resize();
+  window.addEventListener('resize', ()=>{ resize(); });
+  draw();
+})();
+
+/* ── Floating shapes: ○ △ □ ─────────────────────────────────── */
+(function(){
+  const container=document.getElementById('particles');
+  const shapes=['○','△','□','○','△','○','□','○','△','□'];
+  for(let i=0;i<40;i++){
+    const el=document.createElement('div');
+    el.className='pt';
+    el.textContent=shapes[i%shapes.length];
+    el.style.cssText=`
+      left:${Math.random()*100}vw;
+      font-size:${.7+Math.random()*1.8}rem;
+      animation-duration:${10+Math.random()*24}s;
+      animation-delay:${Math.random()*28}s;
+    `;
+    container.appendChild(el);
+  }
+})();
+
+/* ── Leaderboard render ────────────────────────────────────── */
+function pad(n){return String(n).padStart(3,'0');}
+
+function pClass(r){
+  if(r===1)return 'p1';
+  if(r===2)return 'p2';
+  if(r===3)return 'p3';
+  return 'pn';
+}
+
+function buildRow(a,idx){
+  const tr=document.createElement('tr');
+  if(a.rank<=3)tr.className='podium';
+  tr.style.animationDelay=`${idx*25}ms`;
+  const subs=(a.subreddits||[]).slice(0,3)
+    .map(s=>`<span class="arena-tag">r/${esc(s)}</span>`).join('');
+  const cls=pClass(a.rank);
+  tr.innerHTML=`
+    <td class="num-cell">
+      <span class="player-num ${cls}">
+        <span class="n">${pad(a.rank)}</span><span class="dot">.</span>
+      </span>
+    </td>
+    <td class="player-cell" data-author="${esc(a.author)}" title="Click to view predictions">
+      <span class="player-pre">u/</span><span class="player-name-text">${esc(a.author)}</span>
+    </td>
+    <td>
+      <div class="acc-wrap">
+        <div>
+          <span class="acc-pct">${a.accuracy_pct}</span>
+          <div class="bar-bg" style="margin-top:3px"><div class="bar-fill" style="width:${Math.max(0,Math.min(a.accuracy_raw*4,100))}%"></div></div>
+        </div>
+        ${a.dir_accuracy != null ? `<span class="acc-dir">${a.dir_accuracy}% correct</span>` : ''}
+      </div>
+    </td>
+    <td class="rounds">${a.resolved_calls}</td>
+    <td class="influence">${(a.avg_upvotes??0).toFixed(1)}</td>
+    <td>${subs||'<span class="influence">—</span>'}</td>
+  `;
+  return tr;
+}
+
+function esc(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ── Day slider ─────────────────────────────────────────────── */
+const HORIZONS   = [1, 5, 10, 20, 60, 90, 180, 365];
+const H_KEYS     = ['acc_1d','acc_5d','acc_10d','acc_20d','acc_60d','acc_90d','acc_180d','acc_365d'];
+const H_LABELS   = ['1 Day','5 Days','10 Days','20 Days','60 Days','90 Days','180 Days','365 Days'];
+const H_TAGS     = ['SHORT-TERM','SHORT-TERM','SHORT-TERM','MID-TERM','MID-TERM','MID-TERM','LONG-TERM','LONG-TERM'];
+const H_DESCS    = [
+  'Next-day momentum — earnings beats, news catalysts',
+  'One-week thesis — post-earnings drift, sector moves',
+  'Two-week outlook — macro positioning, rotation plays',
+  'One-month view — trend confirmation, breakout follows-through',
+  'Quarter-cycle — fundamentals starting to show in price',
+  'Full quarter — earnings season thesis, analyst upgrades',
+  'Six-month conviction — product cycles, margin expansion stories',
+  'One-year thesis — long-term value, turnaround plays, secular trends',
+];
+let _currentHIdx = 1; // default 5d
+
+function updateSliderUI(idx){
+  const pct = (idx/7)*100;
+  document.getElementById('day-range').value = idx;
+  document.getElementById('day-range').style.background =
+    `linear-gradient(90deg,#e8005a ${pct}%,rgba(255,255,255,.12) ${pct}%)`;
+  document.getElementById('ds-value').textContent = H_LABELS[idx];
+  document.getElementById('ds-tag').textContent   = H_TAGS[idx];
+  document.getElementById('ds-desc').textContent  = H_DESCS[idx];
+  document.querySelectorAll('.ds-stop').forEach((el,i)=>{
+    el.classList.toggle('active', i<=idx);
+  });
+}
+
+function rerankByHorizon(idx){
+  if(!_analysts.length) return;
+  const key = H_KEYS[idx];
+  const reordered = [..._analysts]
+    .map(a=>({
+      ...a,
+      // fall back to overall accuracy if per-horizon not available (demo mode)
+      _acc: a[key] != null ? a[key] : a.accuracy_raw,
+    }))
+    .sort((a,b)=> b._acc - a._acc)
+    .map((a,i)=>({
+      ...a,
+      rank: i+1,
+      accuracy_raw: a._acc,
+      accuracy_pct: Math.round(a._acc)+'%',
+    }));
+
+  const tbody = document.getElementById('tbody');
+  tbody.innerHTML='';
+  reordered.forEach((a,i)=>tbody.appendChild(buildRow(a,i)));
+}
+
+function onSlide(val){
+  const idx = parseInt(val);
+  _currentHIdx = idx;
+  updateSliderUI(idx);
+  rerankByHorizon(idx);
+}
+
+function animateBars(){
+  // bars are set inline now — nothing to do
+}
+
+async function loadData(){
+  try{
+    const res=await fetch('/api/leaderboard');
+    const data=await res.json();
+
+    if(!data.analysts||data.analysts.length===0){
+      document.getElementById('live-label').textContent='GAMES IN PROGRESS · DEEPSEEK';
+      document.getElementById('loading-screen').style.display='block';
+      setTimeout(loadData,30000);
+      return;
+    }
+
+    document.getElementById('loading-screen').style.display='none';
+    document.getElementById('s-analysts').textContent=(data.total_analysts||0).toLocaleString();
+    document.getElementById('s-accuracy').textContent=data.avg_accuracy||'—';
+    document.getElementById('s-calls').textContent=(data.total_calls||0).toLocaleString();
+    document.getElementById('s-updated').textContent=data.updated_at||'—';
+    document.getElementById('stats-bar').style.display='';
+    document.getElementById('day-slider-wrap').style.display='';
+    document.getElementById('coinflip-note').style.display='';
+    updateSliderUI(_currentHIdx);
+    document.getElementById('table-wrap').style.display='';
+    document.getElementById('live-label').textContent=
+      data.demo   ? 'PREVIEW MODE · REAL PLAYERS LOAD AFTER SCORING' :
+      data.locked ? 'CACHED · GAMES STILL RUNNING' :
+                    'LIVE · TOP 100 SURVIVORS';
+
+    const tbody=document.getElementById('tbody');
+    tbody.innerHTML='';
+    data.analysts.forEach((a,i)=>tbody.appendChild(buildRow(a,i)));
+    setTimeout(animateBars,120);
+
+    /* Feed compare page */
+    _analysts=data.analysts;
+    try{ populateSelects(data.analysts); }catch(_){}
+    try{ buildSubBreakdown(data.analysts); }catch(_){}
+
+  }catch(e){
+    console.error('loadData error:',e);
+    document.getElementById('live-label').textContent='ERROR — RETRYING...';
+    document.getElementById('loading-screen').style.display='block';
+    setTimeout(loadData,8000);
+  }
+}
+
+/* ── How It Works toggle ───────────────────────────────────── */
+function toggleHIW(){
+  const body=document.getElementById('hiw-body');
+  const arrow=document.getElementById('hiw-arrow');
+  const open=body.classList.toggle('open');
+  arrow.style.transform=open?'rotate(180deg)':'rotate(0deg)';
+}
+
+/* ── Tab switching ─────────────────────────────────────────── */
+function switchTab(name, btn){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  if(btn) btn.classList.add('active');
+}
+
+/* ── Analyst drill-down ────────────────────────────────────── */
+let _prevTab = 'leaderboard';
+
+function closeAnalyst(){
+  const prevBtn = document.querySelector(`.tab-btn[data-tab="${_prevTab}"]`);
+  switchTab(_prevTab, prevBtn);
+}
+
+async function openAnalyst(username){
+  _prevTab = document.querySelector('.tab-btn.active')?.dataset?.tab || 'leaderboard';
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('panel-analyst').classList.add('active');
+  document.getElementById('analyst-content').innerHTML =
+    '<div class="analyst-loading">Loading profile for u/'+esc(username)+'...</div>';
+
+  let data;
+  try{
+    const res = await fetch('/api/analyst/'+encodeURIComponent(username));
+    if(!res.ok){ throw new Error(res.status); }
+    data = await res.json();
+  }catch(e){
+    document.getElementById('analyst-content').innerHTML =
+      '<div class="no-preds">Could not load profile — analyst may not be in the credibility database yet.</div>';
+    return;
+  }
+
+  const HORIZON_LIST = [
+    {key:'1',  label:'1 Day',    primary:false},
+    {key:'5',  label:'5 Days',   primary:false},
+    {key:'10', label:'10 Days',  primary:false},
+    {key:'20', label:'20 Days',  primary:false},
+    {key:'60', label:'60 Days',  primary:true},
+    {key:'90', label:'90 Days',  primary:false},
+    {key:'180',label:'180 Days', primary:false},
+    {key:'365',label:'1 Year',   primary:false},
+  ];
+
+  const horizonCells = HORIZON_LIST.map(h=>{
+    const d = data.horizons[h.key] || {};
+    const hasData = d.acc != null;
+    return `<div class="hg-cell${h.primary?' primary':''}">
+      <div class="hg-days">${h.label}${h.primary?' ★':''}</div>
+      <div class="hg-acc${hasData?'':' dim'}">${hasData ? (d.acc>=0?'+':'')+d.acc+'%' : '—'}</div>
+      <div class="hg-calls">${hasData ? (d.calls||0)+' predictions' : 'need 3+'}</div>
+    </div>`;
+  }).join('');
+
+  const tierDots = (tier)=>{
+    let s='';
+    for(let i=1;i<=3;i++) s+=`<span class="tier-dot${i<=tier?' lit':''}"></span>`;
+    return s;
+  };
+
+  const predCards = data.predictions.length === 0
+    ? '<div class="no-preds">No scored predictions found for this analyst.</div>'
+    : data.predictions.map(p=>{
+        const stanceClass = p.stance==='bullish' ? 'stance-bull' : 'stance-bear';
+        const stanceLabel = p.stance==='bullish' ? '↑ BULLISH' : '↓ BEARISH';
+        const horizNote   = p.horizon_days ? ` · ${p.horizon_days}d horizon stated` : '';
+        const rationale   = p.rationale
+          ? `<div class="pred-rationale">"${esc(p.rationale)}"</div>` : '';
+        const bodyTxt     = p.body_excerpt
+          ? `<div class="pred-body">${esc(p.body_excerpt)}${p.body_excerpt.length>=500?'…':''}</div>` : '';
+        return `
+          <div class="pred-card">
+            <div class="pred-header">
+              <span class="pred-ticker">$${esc(p.ticker)}</span>
+              <span class="stance-pill ${stanceClass}">${stanceLabel}</span>
+              <span class="pred-tier">${tierDots(p.reasoning_tier)} Tier ${p.reasoning_tier}</span>
+            </div>
+            <div class="pred-meta">
+              <span>r/${esc(p.subreddit)}</span>
+              <span>${esc(p.date)}</span>
+              <span>↑ ${p.upvotes} upvotes</span>
+              ${horizNote ? '<span>'+esc(horizNote)+'</span>' : ''}
+            </div>
+            ${rationale}
+            ${bodyTxt}
+          </div>`;
+      }).join('');
+
+  const subTags = (data.subreddits||[]).slice(0,6)
+    .map(s=>`<span class="arena-tag">r/${esc(s)}</span>`).join('');
+
+  const accPct = data.accuracy_pct != null
+    ? (data.accuracy_pct > 0 ? '+' : '') + data.accuracy_pct + '%'
+    : '—';
+
+  document.getElementById('analyst-content').innerHTML = `
+    <div class="analyst-hero">
+      <div class="analyst-name-block">
+        <div class="analyst-handle"><span class="at">u/</span>${esc(data.author)}</div>
+        <div class="analyst-subs">${subTags}</div>
+      </div>
+      <div class="analyst-stat-row">
+        <div class="analyst-stat">
+          <div class="analyst-stat-val">${data.avg_return_pct != null ? (data.avg_return_pct>=0?'+':'')+data.avg_return_pct+'%' : '—'}</div>
+          <div class="analyst-stat-lbl">Avg Return</div>
+        </div>
+        <div class="analyst-stat">
+          <div class="analyst-stat-val">${data.dir_accuracy != null ? data.dir_accuracy+'%' : '—'}</div>
+          <div class="analyst-stat-lbl">Accuracy</div>
+        </div>
+        <div class="analyst-stat">
+          <div class="analyst-stat-val">${data.resolved_calls}</div>
+          <div class="analyst-stat-lbl">Verified Predictions</div>
+        </div>
+        <div class="analyst-stat">
+          <div class="analyst-stat-val">${data.avg_upvotes}</div>
+          <div class="analyst-stat-lbl">Avg Upvotes</div>
+        </div>
+        <div class="analyst-stat">
+          <div class="analyst-stat-val">${data.total_comments}</div>
+          <div class="analyst-stat-lbl">Total Comments</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="horizon-grid-title">Avg return by time horizon &nbsp;<span style="color:var(--pink);font-weight:400">★ = primary (60d)</span></div>
+    <div class="horizon-grid">${horizonCells}</div>
+
+    <div class="pred-section-title">${data.predictions.length} Scored Predictions (most recent first)</div>
+    ${predCards}
+  `;
+}
+
+/* ── Click delegation for analyst names ───────────────────── */
+document.addEventListener('click', e=>{
+  const cell = e.target.closest('.player-cell[data-author]');
+  if(cell) openAnalyst(cell.dataset.author);
+});
+
+/* ── Global analysts store ─────────────────────────────────── */
+let _analysts=[];
+
+/* ── Compare page logic ────────────────────────────────────── */
+function populateSelects(analysts){
+  ['sel-a','sel-b'].forEach(id=>{
+    const sel=document.getElementById(id);
+    const cur=sel.value;
+    while(sel.options.length>1)sel.remove(1);
+    analysts.forEach(a=>{
+      const opt=document.createElement('option');
+      opt.value=a.author;
+      opt.textContent=`${pad(a.rank)}. u/${a.author}  (${a.accuracy_pct})`;
+      sel.appendChild(opt);
+    });
+    if(cur)sel.value=cur;
+  });
+}
+
+function statCard(a, side){
+  if(!a){return '';}
+  return `
+    <div class="cs-row"><span class="cs-key">ACCURACY</span><span class="cs-val">${a.accuracy_pct}</span></div>
+    <div class="cs-row"><span class="cs-key">CALLS MADE</span><span class="cs-val">${a.resolved_calls}</span></div>
+    <div class="cs-row"><span class="cs-key">AVG UPVOTES</span><span class="cs-val">${(a.avg_upvotes??0).toFixed(1)}</span></div>
+    <div class="cs-row"><span class="cs-key">RANK</span><span class="cs-val">${pad(a.rank)}.</span></div>
+    <div class="cs-row"><span class="cs-key">MARKETS</span><span class="cs-val">${(a.subreddits||[]).join(', ')||'—'}</span></div>
+  `;
+}
+
+function updateCompare(){
+  const valA=document.getElementById('sel-a').value;
+  const valB=document.getElementById('sel-b').value;
+  const a=_analysts.find(x=>x.author===valA);
+  const b=_analysts.find(x=>x.author===valB);
+
+  document.getElementById('stats-a').innerHTML=statCard(a,'a');
+  document.getElementById('stats-b').innerHTML=statCard(b,'b');
+  document.getElementById('card-a').className='player-card'+(a?' selected':'');
+  document.getElementById('card-b').className='player-card'+(b?' selected':'');
+
+  const barsDiv=document.getElementById('compare-bars');
+  if(a&&b){
+    barsDiv.style.display='';
+    const metrics=[
+      {label:'Accuracy',        keyA:a.accuracy_raw,          keyB:b.accuracy_raw,          unit:'%'},
+      {label:'Calls Made',      keyA:a.resolved_calls,        keyB:b.resolved_calls,         unit:''},
+      {label:'Avg Upvotes',     keyA:a.avg_upvotes,           keyB:b.avg_upvotes,            unit:''},
+      {label:'Overall Score',   keyA:Math.round(a.overall_score*1000), keyB:Math.round(b.overall_score*1000), unit:''},
+    ];
+    const max_vals=metrics.map(m=>Math.max(m.keyA,m.keyB,1));
+    document.getElementById('bars-container').innerHTML=metrics.map((m,i)=>{
+      const pctA=Math.round(m.keyA/max_vals[i]*100);
+      const pctB=Math.round(m.keyB/max_vals[i]*100);
+      const winA=m.keyA>m.keyB, winB=m.keyB>m.keyA;
+      return `
+        <div class="cbar-row">
+          <div class="cbar-label">
+            <span class="v1 ${winA?'win':''}">${m.keyA}${m.unit}</span>
+            <span class="metric">${m.label.toUpperCase()}</span>
+            <span class="v2 ${winB?'win':''}">${m.keyB}${m.unit}</span>
+          </div>
+          <div class="cbar-track">
+            <div class="cbar-a" style="width:${pctA}%"></div>
+            <div class="cbar-b" style="width:${pctB}%"></div>
+          </div>
+        </div>`;
+    }).join('');
+  } else {
+    barsDiv.style.display='none';
+  }
+}
+
+function buildSubBreakdown(analysts){
+  const counts={};
+  analysts.forEach(a=>(a.subreddits||[]).forEach(s=>{counts[s]=(counts[s]||0)+1;}));
+  const sorted=Object.entries(counts).sort((a,b)=>b[1]-a[1]).slice(0,12);
+  const maxC=sorted[0]?.[1]||1;
+  document.getElementById('sub-rows').innerHTML=sorted.map(([sub,cnt])=>`
+    <div class="sub-row">
+      <span class="sub-name">r/${esc(sub)}</span>
+      <div class="sub-bar-wrap">
+        <div class="sub-bar" style="width:${Math.round(cnt/maxC*100)}%"></div>
+      </div>
+      <span class="sub-count">${cnt} players</span>
+    </div>
+  `).join('');
+}
+
+loadData();
+
+</script>
+</body>
+</html>

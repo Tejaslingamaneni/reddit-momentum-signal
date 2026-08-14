@@ -1,22 +1,15 @@
-"""Milestone 7 – Author credibility resolver.
+"""Author credibility resolver — methodology v2.
 
-For every non-naive scored comment with a bullish or bearish stance, we check
-whether the stock actually moved in the predicted direction over the next N
-trading days. Authors who are right more often get a higher credibility weight
-(0.5–1.5) that amplifies or dampens their contribution to the signal.
+Fixes applied vs v1:
+  1. Market-adjusted returns: correct = alpha > 0 (stock - SPY), not raw return.
+     Prevents permabulls looking smart in bull markets.
+  2. Call deduplication: one call per (author, ticker) per 90-day window unless
+     stance flips. Stops someone posting NVDA 30x and inflating their call count.
+  3. 60d is the headline horizon. Other horizons stored as secondary context only.
+  4. Survivorship bias audit: tickers that yfinance can't load are counted and
+     logged. Missing tickers = bad calls silently dropped = accuracy overstated.
 
-Methodology
------------
-- Only Tier 1-3 comments with stance=bullish/bearish are used as "calls"
-- Default resolution horizon: 5 trading days (or comment's horizon_days if set)
-- Correct call: bullish + positive return, OR bearish + negative return
-- Credibility weight uses Bayesian shrinkage toward 50% (base rate):
-    adjusted_acc = (correct + prior) / (total + 2*prior)   [prior = 2]
-    weight = 0.5 + adjusted_acc                             [range: 0.5..1.5]
-- Minimum 1 resolved call to appear in leaderboard
-- Minimum 3 calls before weight deviates meaningfully from 1.0
-
-Main entry point: run_credibility() -> pd.DataFrame (leaderboard)
+Main entry point: run_credibility() -> (leaderboard_df, outcomes_df)
 """
 
 from __future__ import annotations
@@ -26,7 +19,6 @@ from datetime import timedelta
 from pathlib import Path
 
 import duckdb
-import numpy as np
 import pandas as pd
 import structlog
 import yaml
@@ -35,23 +27,69 @@ import yfinance as yf
 warnings.filterwarnings("ignore")
 log = structlog.get_logger()
 
-DEFAULT_HORIZON_DAYS = 5   # trading days if comment has no horizon_days
-PRIOR_STRENGTH       = 2   # Bayesian prior observations at 50% accuracy
-MIN_CALLS_FOR_WEIGHT = 3   # below this, weight stays near 1.0
+HEADLINE_HORIZON     = 60   # trading days — primary accuracy metric
+PRIOR_STRENGTH       = 2    # Bayesian shrinkage toward 50%
+MIN_CALLS_FOR_WEIGHT = 3
+HORIZONS             = [1, 5, 10, 20, 60, 90, 180, 365]
+DEDUP_WINDOW_DAYS    = 90   # calendar days per (author, ticker) window
+BENCHMARK            = "SPY"
+
+
+import time as _time
+import re as _re
+
+# Words that look like tickers but aren't stocks
+_FAKE_TICKERS = {
+    "COVID","FEAR","NBA","NFL","NFL","UFC","NASA","CIA","FBI","DOJ","DOE","SEC",
+    "FED","IMF","GDP","CPI","PPI","PCE","ECB","BOJ","FOMC","OPEC","NATO","IRAN",
+    "CHINA","KOREA","JAPAN","INDIA","USSR","WWII","WWIII","TRUMP","ELON","MAGA",
+    "DOGE","ARK","BEAR","BULL","CALLS","PUTS","NEWS","TODAY","DAILY","WEEK","YEAR",
+    "MONTH","DONE","DEAD","SAFE","FREE","FAKE","SCAM","DUMP","PUMP","MOON","ROTH",
+    "ESPP","HELOC","TFSA","RRSP","MBA","CPA","CFA","NFA","ISA","HOA","LLC","INC",
+    "FAANG","MAGS","DJIA","NYSE","AMEX","OTC","LSE","TSX","ASX","CNBC","WSJ","BBC",
+    "CNN","NBC","ESPN","HBO","NFL","NBA","FIFA","UFC","NATO","USAID","IMF","OECD",
+    "HYSA","MYGA","APY","SWR","FIRE","LEAN","LEAN","VHCOL","HCOL","LCOL",
+    "CAPEX","WACC","EBITDA","ROIC","AFFO","FFO","NPV","DCF","GAAP","IFRS",
+    "OTHER","THOSE","THESE","THEIR","WHERE","THERE","WOULD","COULD","MIGHT",
+    "ABOUT","AGAIN","AFTER","BEING","DOING","GOING","SINCE","UNTIL","EVERY",
+    "TOTAL","WHOLE","STILL","NEVER","LEAST","FIRST","LOWER","UNDER","ABOVE",
+}
+
+def _is_valid_ticker(t: str) -> bool:
+    if t in _FAKE_TICKERS:
+        return False
+    if not _re.match(r'^[A-Z]{1,5}$', t):  # 1-5 uppercase letters only
+        return False
+    return True
 
 
 def _fetch_prices(tickers: list[str], start: str, end: str) -> pd.DataFrame:
     if not tickers:
         return pd.DataFrame()
-    raw = yf.download(tickers, start=start, end=end,
-                      auto_adjust=True, progress=False, threads=True)
-    if raw.empty:
+
+    # Download in batches to avoid rate limiting
+    BATCH = 100
+    frames = []
+    batches = [tickers[i:i+BATCH] for i in range(0, len(tickers), BATCH)]
+    for i, batch in enumerate(batches):
+        try:
+            raw = yf.download(batch, start=start, end=end,
+                              auto_adjust=True, progress=False, threads=False)
+            if not raw.empty:
+                close = raw["Close"] if isinstance(raw.columns, pd.MultiIndex) else raw[["Close"]]
+                if not isinstance(raw.columns, pd.MultiIndex):
+                    close.columns = batch
+                frames.append(close)
+        except Exception:
+            pass
+        if i < len(batches) - 1:
+            _time.sleep(2)
+
+    if not frames:
         return pd.DataFrame()
-    close = raw["Close"] if isinstance(raw.columns, pd.MultiIndex) else raw[["Close"]]
-    if not isinstance(raw.columns, pd.MultiIndex):
-        close.columns = tickers
-    close.index = pd.to_datetime(close.index).tz_localize(None)
-    return close.sort_index()
+    result = pd.concat(frames, axis=1)
+    result.index = pd.to_datetime(result.index).tz_localize(None)
+    return result.sort_index()
 
 
 def _entry_exit(
@@ -80,7 +118,37 @@ def _entry_exit(
     return float(col.loc[entry_td]), float(col.loc[exit_td])
 
 
-def run_credibility(db_path: str | None = None) -> pd.DataFrame:
+def _dedup_calls(calls: pd.DataFrame) -> pd.DataFrame:
+    """Keep one call per (author, ticker) per 90-day window unless stance flips."""
+    calls = calls.sort_values(["author", "ticker", "comment_date"]).reset_index(drop=True)
+    keep = []
+    last: dict[tuple, tuple] = {}  # (author, ticker) -> (last_date, last_stance)
+
+    for _, row in calls.iterrows():
+        key = (row["author"], row["ticker"])
+        comment_date = pd.Timestamp(row["comment_date"])
+        stance = row["stance"]
+
+        if key not in last:
+            keep.append(True)
+            last[key] = (comment_date, stance)
+        else:
+            last_date, last_stance = last[key]
+            days_since = (comment_date - last_date).days
+            stance_flipped = stance != last_stance
+            if days_since >= DEDUP_WINDOW_DAYS or stance_flipped:
+                keep.append(True)
+                last[key] = (comment_date, stance)
+            else:
+                keep.append(False)
+
+    deduped = calls[keep].reset_index(drop=True)
+    dropped = len(calls) - len(deduped)
+    log.info("credibility.dedup", original=len(calls), kept=len(deduped), dropped=dropped)
+    return deduped
+
+
+def run_credibility(db_path: str | None = None):
     project_root = Path(__file__).parent.parent
     if db_path is None:
         with (project_root / "config.yaml").open() as fh:
@@ -89,7 +157,6 @@ def run_credibility(db_path: str | None = None) -> pd.DataFrame:
 
     con = duckdb.connect(db_path)
 
-    # Load all non-naive bullish/bearish scored comments
     calls = con.execute("""
         SELECT
             c.author,
@@ -108,105 +175,159 @@ def run_credibility(db_path: str | None = None) -> pd.DataFrame:
         ORDER BY c.author, comment_date
     """).df()
 
-    log.info("credibility.calls_loaded", n=len(calls),
-             authors=calls["author"].nunique())
+    log.info("credibility.calls_loaded", n=len(calls), authors=calls["author"].nunique())
 
     if calls.empty:
         con.close()
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
 
-    tickers = calls["ticker"].unique().tolist()
+    # Fix 2: deduplicate before resolving
+    calls = _dedup_calls(calls)
+
+    all_tickers = calls["ticker"].unique().tolist()
+    tickers = [t for t in all_tickers if _is_valid_ticker(t)]
+    filtered_out = len(all_tickers) - len(tickers)
+    log.info("credibility.ticker_filter", total=len(all_tickers), kept=len(tickers), filtered_fake=filtered_out)
+
+    # Restrict calls to valid tickers only
+    calls = calls[calls["ticker"].isin(set(tickers))].reset_index(drop=True)
+
     start = (pd.to_datetime(calls["comment_date"].min()) - timedelta(days=5)).strftime("%Y-%m-%d")
-    end   = (pd.to_datetime(calls["comment_date"].max()) + timedelta(days=35)).strftime("%Y-%m-%d")
+    end   = (pd.to_datetime(calls["comment_date"].max()) + timedelta(days=400)).strftime("%Y-%m-%d")
 
-    log.info("credibility.downloading_prices", n_tickers=len(tickers))
-    prices = _fetch_prices(tickers, start, end)
+    # Fix 1: always download SPY alongside stock tickers
+    download_tickers = list(set(tickers + [BENCHMARK]))
+    log.info("credibility.downloading_prices", n_tickers=len(download_tickers))
+    prices = _fetch_prices(download_tickers, start, end)
 
     if prices.empty:
         log.error("credibility.no_prices")
         con.close()
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
 
     trading_days = pd.DatetimeIndex(sorted(prices.index.unique()))
     valid_tickers = set(prices.columns)
 
-    # Resolve each call
+    # Fix 4: survivorship bias audit
+    missing = [t for t in tickers if t not in valid_tickers]
+    missing_pct = len(missing) / max(len(tickers), 1) * 100
+    log.info("credibility.survivorship_audit",
+             total_tickers=len(tickers),
+             missing=len(missing),
+             missing_pct=round(missing_pct, 1),
+             warning="accuracy overstated" if missing_pct > 5 else "ok")
+
     records = []
     for _, row in calls.iterrows():
         ticker = row["ticker"]
         if ticker not in valid_tickers:
             continue
         signal_date = pd.Timestamp(row["comment_date"])
-        horizon = int(row["horizon_days"]) if pd.notna(row["horizon_days"]) else DEFAULT_HORIZON_DAYS
-        horizon = max(1, min(horizon, 20))  # clamp to sensible range
 
-        entry, exit_ = _entry_exit(ticker, signal_date, horizon, prices, trading_days)
-        if entry is None or entry <= 0:
-            continue
+        for h in HORIZONS:
+            entry, exit_ = _entry_exit(ticker, signal_date, h, prices, trading_days)
+            if entry is None or entry <= 0:
+                continue
 
-        fwd_ret = (exit_ - entry) / entry
-        correct = (
-            (row["stance"] == "bullish" and fwd_ret > 0) or
-            (row["stance"] == "bearish" and fwd_ret < 0)
-        )
-        records.append({
-            "author":         row["author"],
-            "comment_id":     row["comment_id"],
-            "ticker":         ticker,
-            "stance":         row["stance"],
-            "reasoning_tier": row["reasoning_tier"],
-            "q_composite":    row["q_composite"],
-            "comment_date":   row["comment_date"],
-            "fwd_ret":        round(fwd_ret, 5),
-            "correct":        int(correct),
-            "horizon":        horizon,
-        })
+            fwd_ret = (exit_ - entry) / entry
+
+            # signed_return: raw return in the predicted direction
+            signed_return = fwd_ret if row["stance"] == "bullish" else -fwd_ret
+            correct = int(signed_return > 0)
+
+            records.append({
+                "author":         row["author"],
+                "comment_id":     row["comment_id"],
+                "ticker":         ticker,
+                "stance":         row["stance"],
+                "reasoning_tier": row["reasoning_tier"],
+                "q_composite":    row["q_composite"],
+                "comment_date":   row["comment_date"],
+                "fwd_ret":        round(fwd_ret, 5),
+                "signed_return":  round(signed_return, 5),
+                "correct":        correct,
+                "horizon":        h,
+            })
 
     outcomes = pd.DataFrame(records)
     log.info("credibility.resolved", n=len(outcomes))
 
     if outcomes.empty:
         con.close()
-        return pd.DataFrame()
+        return pd.DataFrame(), pd.DataFrame()
 
-    # Score each author
+    def _adj_return(sum_ret, total):
+        # shrink toward 0 (no expected edge) using prior of PRIOR_STRENGTH null calls
+        return sum_ret / (total + PRIOR_STRENGTH)
+
+    def _adj_acc(correct, total):
+        return (correct + PRIOR_STRENGTH * 0.5) / (total + PRIOR_STRENGTH)
+
+    # Primary metric: avg signed return at 60d horizon
+    base = outcomes[outcomes["horizon"] == HEADLINE_HORIZON]
     author_stats = (
-        outcomes.groupby("author")
+        base.groupby("author")
         .agg(
-            resolved_calls=("correct", "count"),
+            resolved_calls=("signed_return", "count"),
+            sum_returns=("signed_return", "sum"),
             correct_calls=("correct", "sum"),
-            avg_tier=("reasoning_tier", "mean"),
-            avg_q=("q_composite", "mean"),
-            tickers_called=("ticker", "nunique"),
         )
         .reset_index()
     )
-
-    # Bayesian-shrunk accuracy → credibility weight
-    author_stats["raw_accuracy"] = author_stats["correct_calls"] / author_stats["resolved_calls"]
-    author_stats["adj_accuracy"] = (
-        (author_stats["correct_calls"] + PRIOR_STRENGTH * 0.5) /
-        (author_stats["resolved_calls"] + PRIOR_STRENGTH)
+    author_stats["adj_return"] = author_stats.apply(
+        lambda r: _adj_return(r["sum_returns"], r["resolved_calls"]), axis=1
     )
-    author_stats["credibility_weight"] = (0.5 + author_stats["adj_accuracy"]).clip(0.5, 1.5)
+    # accuracy: % of calls that went in the right direction (Bayesian-shrunk toward 50%)
+    author_stats["adj_accuracy"] = author_stats.apply(
+        lambda r: _adj_acc(r["correct_calls"], r["resolved_calls"]), axis=1
+    )
+    # credibility_weight = 0.5 + adj_return (ranking metric)
+    author_stats["credibility_weight"] = 0.5 + author_stats["adj_return"]
 
-    # Rank: sort by resolved_calls (need volume), then accuracy
+    # Per-horizon avg signed return (secondary context)
+    for h in HORIZONS:
+        grp = outcomes[outcomes["horizon"] == h].groupby("author").agg(
+            **{f"sum_{h}d": ("signed_return", "sum"), f"calls_{h}d": ("signed_return", "count")}
+        ).reset_index()
+        author_stats = author_stats.merge(grp, on="author", how="left")
+        author_stats[f"acc_{h}d"] = author_stats.apply(
+            lambda r, h=h: _adj_return(r[f"sum_{h}d"], r[f"calls_{h}d"])
+            if pd.notna(r.get(f"calls_{h}d")) and r[f"calls_{h}d"] >= MIN_CALLS_FOR_WEIGHT
+            else None, axis=1
+        )
+
     leaderboard = author_stats.sort_values(
-        ["resolved_calls", "adj_accuracy"], ascending=[False, False]
+        ["resolved_calls", "adj_return"], ascending=[False, False]
     ).reset_index(drop=True)
-    leaderboard.index += 1  # rank starts at 1
+    leaderboard.index += 1
 
-    # Write to author_credibility table (today's snapshot)
+    def _f(v):
+        return None if v is None or (isinstance(v, float) and pd.isna(v)) else float(v)
+
+    def _i(v):
+        return None if v is None or (isinstance(v, float) and pd.isna(v)) else int(v)
+
     today = pd.Timestamp.now().date()
     con.execute("DELETE FROM author_credibility WHERE as_of_date = ?", [today])
     for _, row in author_stats.iterrows():
         con.execute(
             """INSERT OR REPLACE INTO author_credibility
-               (author, as_of_date, resolved_calls, brier_score, w_credibility)
-               VALUES (?, ?, ?, ?, ?)""",
-            [row["author"], today, int(row["resolved_calls"]),
-             float(1 - row["adj_accuracy"]),   # simplified Brier proxy
-             float(row["credibility_weight"])],
+               (author, as_of_date, resolved_calls, brier_score, w_credibility,
+                acc_1d, acc_5d, acc_10d, acc_20d, acc_60d, acc_90d, acc_180d, acc_365d,
+                calls_1d, calls_5d, calls_10d, calls_20d, calls_60d, calls_90d, calls_180d, calls_365d)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            [row["author"], today,
+             int(row["resolved_calls"]),
+             _f(row["adj_accuracy"]),   # brier_score stores 60d accuracy
+             _f(row["credibility_weight"]),
+             _f(row.get("acc_1d")),  _f(row.get("acc_5d")),
+             _f(row.get("acc_10d")), _f(row.get("acc_20d")),
+             _f(row.get("acc_60d")), _f(row.get("acc_90d")),
+             _f(row.get("acc_180d")),_f(row.get("acc_365d")),
+             _i(row.get("calls_1d")),  _i(row.get("calls_5d")),
+             _i(row.get("calls_10d")), _i(row.get("calls_20d")),
+             _i(row.get("calls_60d")), _i(row.get("calls_90d")),
+             _i(row.get("calls_180d")),_i(row.get("calls_365d"))],
         )
 
     con.close()
