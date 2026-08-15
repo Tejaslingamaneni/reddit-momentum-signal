@@ -29,7 +29,7 @@ log = structlog.get_logger()
 
 HEADLINE_HORIZON     = 60   # trading days — primary accuracy metric
 PRIOR_STRENGTH       = 2    # Bayesian shrinkage toward 50%
-MIN_CALLS_FOR_WEIGHT = 3
+MIN_CALLS_FOR_WEIGHT = 1
 HORIZONS             = [1, 5, 10, 20, 60, 90, 180, 365]
 DEDUP_WINDOW_DAYS    = 90   # calendar days per (author, ticker) window
 BENCHMARK            = "SPY"
@@ -169,9 +169,12 @@ def run_credibility(db_path: str | None = None):
             CAST(DATE_TRUNC('day', c.created_utc) AS DATE) AS comment_date
         FROM comment_scores cs
         JOIN comments c ON c.comment_id = cs.comment_id
+        JOIN ticker_mentions tm
+            ON tm.comment_id = cs.comment_id AND tm.ticker = cs.ticker
         WHERE cs.parse_error = FALSE
           AND cs.is_naive = FALSE
           AND cs.stance IN ('bullish', 'bearish')
+          AND tm.match_method = 'cashtag'
         ORDER BY c.author, comment_date
     """).df()
 

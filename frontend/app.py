@@ -17,7 +17,7 @@ app = Flask(__name__)
 PROJECT_ROOT = Path(__file__).parent.parent
 CACHE_PATH    = PROJECT_ROOT / "data" / "leaderboard_cache.json"
 PROFILES_PATH = PROJECT_ROOT / "data" / "analyst_profiles.json"
-MIN_CALLS = 2
+MIN_CALLS = 1
 
 
 def _load_from_db() -> dict | None:
