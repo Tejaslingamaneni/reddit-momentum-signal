@@ -729,6 +729,17 @@
     .no-preds{color:var(--dim);font-size:.85rem;padding:2rem 0;}
     .analyst-loading{color:var(--dim);font-size:.85rem;padding:3rem 0;text-align:center;}
 
+    /* Match confidence badges */
+    .match-badge{
+      display:inline-block;font-size:.6rem;font-weight:900;
+      width:14px;height:14px;line-height:14px;text-align:center;
+      border-radius:3px;margin-right:3px;vertical-align:middle;
+    }
+    .match-cash{background:rgba(232,0,90,.25);color:var(--pink2);border:1px solid rgba(232,0,90,.4);}
+    .match-text{background:rgba(255,255,255,.06);color:var(--dim);border:1px solid rgba(255,255,255,.12);}
+    .pred-card-weak{opacity:.8;}
+    .pred-card-weak .pred-ticker{color:#aaa;}
+
     /* Make leaderboard names clickable */
     .player-cell{cursor:pointer;}
     .player-cell:hover .player-name-text{color:var(--pink2);text-decoration:underline;}
@@ -1522,14 +1533,18 @@ async function openAnalyst(username){
         const stanceClass = p.stance==='bullish' ? 'stance-bull' : 'stance-bear';
         const stanceLabel = p.stance==='bullish' ? '↑ BULLISH' : '↓ BEARISH';
         const horizNote   = p.horizon_days ? ` · ${p.horizon_days}d horizon stated` : '';
+        const isCashtag   = p.match_method === 'cashtag';
+        const matchBadge  = isCashtag
+          ? `<span class="match-badge match-cash" title="Explicit $${esc(p.ticker)} mention — high confidence">$</span>`
+          : `<span class="match-badge match-text" title="Text detection — may not be about this stock">~</span>`;
         const rationale   = p.rationale
           ? `<div class="pred-rationale">"${esc(p.rationale)}"</div>` : '';
         const bodyTxt     = p.body_excerpt
-          ? `<div class="pred-body">${esc(p.body_excerpt)}${p.body_excerpt.length>=500?'…':''}</div>` : '';
+          ? `<div class="pred-body">${esc(p.body_excerpt)}${p.body_excerpt.length>=499?'…':''}</div>` : '';
         return `
-          <div class="pred-card">
+          <div class="pred-card${isCashtag?'':' pred-card-weak'}">
             <div class="pred-header">
-              <span class="pred-ticker">$${esc(p.ticker)}</span>
+              <span class="pred-ticker">${matchBadge}${esc(p.ticker)}</span>
               <span class="stance-pill ${stanceClass}">${stanceLabel}</span>
               <span class="pred-tier">${tierDots(p.reasoning_tier)} Tier ${p.reasoning_tier}</span>
             </div>
@@ -1584,7 +1599,14 @@ async function openAnalyst(username){
     <div class="horizon-grid-title">Avg return by time horizon &nbsp;<span style="color:var(--pink);font-weight:400">★ = primary (60d)</span></div>
     <div class="horizon-grid">${horizonCells}</div>
 
-    <div class="pred-section-title">${data.predictions.length} Scored Predictions (most recent first)</div>
+    <div class="pred-section-title">
+      ${data.predictions.length} Scored Predictions (most recent first)
+      &nbsp;&nbsp;
+      <span style="font-weight:400;color:var(--dim)">
+        <span class="match-badge match-cash">$</span> explicit $TICKER mention &nbsp;
+        <span class="match-badge match-text">~</span> text detection (may be inaccurate)
+      </span>
+    </div>
     ${predCards}
   `;
 }
